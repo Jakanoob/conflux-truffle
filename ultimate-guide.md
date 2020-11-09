@@ -428,8 +428,8 @@ Each time cfxtruffle runs a test, a new contract (clean-room) is completely depl
 When a contract is developed and tested locally, users can try to deploy it to the testnet or the mainnet. cfxtruffle also supports deploying contracts to a remote node. First, users must add a new network configuration such as testnet to the project configuration file, with the host and port ready. Then the privateKeys field should be set with an array of private keys (remote deployment can only be signed locally).
 ```js
 testnet: {
-    host: "wallet-testnet-jsonrpc.conflux-chain.org",
-    port: 12537,            
+    host: "test.confluxrpc.org",
+    port: 80,            
     network_id: "*",       
     // Note: The private keys obtained from the portal need to be prefixed with 0x. privateKeys can also specify a single key. If the private key is configured, please be careful not to upload the code to the public code repository.
     privateKeys: ['your-private-key']  

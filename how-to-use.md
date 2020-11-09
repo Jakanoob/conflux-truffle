@@ -192,9 +192,9 @@ cfxtruffle now support deploy contract to a remote node, the only work to do is 
 
 ```js
 development: {
-    host: "testnet-jsonrpc.conflux-chain.org",
-    port: 12537,
-    network_id: "*",       
+    host: "test.confluxrpc.org",
+    port: 80,
+    network_id: "*",
     type: "conflux",
     // the magic field
     privateKeys: ["keys1xxxxxx", "keys1xxxxxx"],   // you can also directly set one key here: privateKeys: "one key"
