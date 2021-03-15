@@ -400,11 +400,15 @@ class Reporter {
 
       const gasPrice = new web3Utils.BN(tx.gasPrice);
       const gas = new web3Utils.BN(data.receipt.gasUsed);
+      const storageCltrzd = new web3Utils.BN(data.receipt.storageCollateralized.substring(2),16);
+      const bn1024 =new web3Utils.BN(1024);
+      const storageCltrzdInWei = storageCltrzd.mul(new web3Utils.BN(1e18.toString())).div(bn1024);
       const value = new web3Utils.BN(tx.value);
-      const cost = gasPrice.mul(gas).add(value);
+      const cost = gasPrice.mul(gas).add(value).add(storageCltrzdInWei);
 
       data.gasPrice = web3Utils.fromWei(gasPrice, "gwei");
       data.gas = gas.toString(10);
+      data.storageCltrzdInEth = web3Utils.fromWei(storageCltrzdInWei, "ether");
       data.from = tx.from;
       data.value = web3Utils.fromWei(value, "ether");
       data.cost = web3Utils.fromWei(cost, "ether");

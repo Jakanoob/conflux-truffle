@@ -98,6 +98,7 @@ class Console extends EventEmitter {
       this.repl.context.interfaceAdapter = this.interfaceAdapter;
       this.repl.context.accounts = accounts;
       this.repl.context.cfx = this.web3.cfx;
+      this.repl.context.cfxsdk = this.web3.cfxsdk;
       this.provision();
 
       //want repl to exit when it receives an exit command

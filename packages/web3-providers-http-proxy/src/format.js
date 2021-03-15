@@ -77,12 +77,12 @@ function formatTransaction(tx) {
   tx.to = formatHexAddress(tx.to);
 
   delKeys(tx, [
-    "chainId",
-    "contractCreated",
+    // "chainId",
+    // "contractCreated",
     "data",
-    "epochHeight",
+    // "epochHeight",
     "status",
-    "storageLimit"
+    // "storageLimit"
   ]);
   setNull(tx, ["blockNumber"]);
   return tx;

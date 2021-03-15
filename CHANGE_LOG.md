@@ -1,5 +1,9 @@
 
 # Change Log
+
+## v1.0.0
+support addresses format follow cip37
+
 ## v0.0.8
 support contract method `call` and `send` with options `storageLimit`,`epochHeight`,`chainId`
 

@@ -320,25 +320,24 @@ $ cfxtruffle deploy
 =========
 
    Deploying 'Coin'
-   ----------------
-   > transaction hash:    0xd001fb34df8e634e21d7d225bfd0da6128237cd74f170fbc97ad820098ceaeff
+   ----------------------
+   > transaction hash:    0x04bd57afd8ae15b449fd3ca2136eba1c3ecaf436ed8e41219eccf682d72fc994
    > Blocks: 0            Seconds: 0
-   > contract address:    0x8DCe85c454d401318C03956529674b9E2B8E8680
-   > block number:        1608
-   > block timestamp:     1595475207
-   > account:             0x1357DA1577f40EE27aE8870C7f582bD345C65A1c
-   > balance:             997.71313608
-   > gas used:            437390 (0x6ac8e)
+   > contract address:    net2595:acgdr9a1pb602w2c4m8hrfcvbp06yhsxpawgzefe5v
+   > block number:        186420
+   > block timestamp:     1615808327
+   > account:             net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg
+   > balance:             1815.749999999999926
+   > gas used:            280021 (0x445d5)
    > gas price:           20 GDrip
+   > storage collateralized: 0.5625 CFX
    > value sent:          0 CFX
-   > total cost:          0.0087478 CFX
-
+   > total cost:          0.56810042 CFX
 
    > Saving migration to chain.
    > Saving artifacts
    -------------------------------------
-   > Total cost:           0.0087478 CFX
-
+   > Total cost:          1.07005482 CFX
 
 Summary
 =======
@@ -360,32 +359,30 @@ cfxtruffle(development)> let coin = await Coin.deployed()
 # view the owner of the contract
 cfxtruffle(development)> let owner = await coin.owner()
 cfxtruffle(development)> owner
-'0x1357DA1577f40EE27aE8870C7f582bD345C65A1c'
+'net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403'
 # view all the available accounts
 cfxtruffle(development)> accounts
 [
-  '0x1357DA1577f40EE27aE8870C7f582bD345C65A1c',
-  '0x148A9696F8DCf4d6cB01eC80F1047a3476bA5C56',
-  '0x1f69a930B6A4F2BC5Ac03B79A88af9f6bBa0d137'
+  'net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403',
 ]
 # query balance
-cfxtruffle(development)> let balance = await coin.balances('0x1357DA1577f40EE27aE8870C7f582bD345C65A1c')
+cfxtruffle(development)> let balance = await coin.balances('net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403')
 cfxtruffle(development)> balance.toString()
 # mint new coins
-cfxtruffle(development)> await coin.mint('0x1357DA1577f40EE27aE8870C7f582bD345C65A1c', 10000)
-cfxtruffle(development)> balance = await coin.balances('0x1357DA1577f40EE27aE8870C7f582bD345C65A1c')
+cfxtruffle(development)> await coin.mint('net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403', 10000)
+cfxtruffle(development)> balance = await coin.balances('net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403')
 cfxtruffle(development)> balance.toString()
 '10000'
 # transfer
-cfxtruffle(development)> await coin.transfer('0x148A9696F8DCf4d6cB01eC80F1047a3476bA5C56', 100)
-cfxtruffle(development)> balance = await coin.balances('0x1357DA1577f40EE27aE8870C7f582bD345C65A1c')
+cfxtruffle(development)> await coin.transfer('net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg', 100)
+cfxtruffle(development)> balance = await coin.balances('net2595:aargawgb5aj3bwrdmzsuyb0urgnghvg78atz87m403')
 cfxtruffle(development)> balance.toString()
 '9900'
 # specify the gasPrice of the transaction
-cfxtruffle(development)> await coin.transfer('0x148A9696F8DCf4d6cB01eC80F1047a3476bA5C56', 100, {gasPrice: '0x100'})
+cfxtruffle(development)> await coin.transfer('net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg', 100, {gasPrice: '0x100'})
 # the integrated cfx object is a js-conlfux-sdk instance
-cfxtruffle(development)> await cfx.getBalance('0x148A9696F8DCf4d6cB01eC80F1047a3476bA5C56')
-cfxtruffle(development)> await cfx.getNextNonce("0xbbd9e9be525ab967e633bcdaeac8bd5723ed4d6b")
+cfxtruffle(development)> await cfx.getBalance('net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg')
+cfxtruffle(development)> await cfx.getNextNonce("net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg")
 # cfxutil
 cfxtruffle(development)> let drip = cfxutil.unit.fromCFXToGDrip(0.1)
 cfxtruffle(development)> let randomKey = cfxutil.sign.randomPrivateKey()

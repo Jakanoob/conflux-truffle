@@ -120,7 +120,7 @@ const Require = {
     try {
       const fn = this.file({
         file: options.file,
-        context: { web3, interfaceAdapter, cfx: web3.cfx },
+        context: { web3, interfaceAdapter, cfx: web3.cfx, cfxsdk: web3.cfxsdk },
         resolver: options.resolver,
         config: options
       });

@@ -157,7 +157,7 @@ cfxtruffle(develop)> result
 cfxtruffle(develop)> compile
 cfxtruffle(develop)> networks
 # You can also access to `js-conflux-sdk`'s cfx, cfxutil
-cfxtruffle(develop)> let balance = await cfx.getBalance("0x-one-address")
+cfxtruffle(develop)> let balance = await cfx.getBalance("cfx:aajj1b1gm7k51mhzm80czcx31kwxrm2f6jxvy30mvk")
 cfxtruffle(develop)> cfxutil.unit.fromCFXToDrip(123)
 ```
 
