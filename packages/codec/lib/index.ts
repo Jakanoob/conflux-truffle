@@ -271,9 +271,12 @@ export {
   RevertMessageDecoding,
   EmptyFailureDecoding,
   AbiArgument,
+  StateVariable,
   DecoderRequest,
   StorageRequest,
-  CodeRequest
+  CodeRequest,
+  LogOptions,
+  ExtrasAllowed
 } from "./types";
 export * from "./common";
 

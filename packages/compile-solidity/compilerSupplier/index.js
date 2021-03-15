@@ -4,10 +4,11 @@ const semver = require("semver");
 
 const { Docker, Local, Native, VersionRange } = require("./loadingStrategies");
 
+const defaultSolcVersion = "0.5.16";
+
 class CompilerSupplier {
   constructor({ events, solcConfig }) {
-    const { version, docker, compilerRoots, parser } = solcConfig;
-    const defaultSolcVersion = "0.5.16";
+    const { version, docker, compilerRoots, parser, spawn } = solcConfig;
     this.events = events;
     this.parser = parser;
     this.version = version ? version : defaultSolcVersion;
@@ -18,6 +19,7 @@ class CompilerSupplier {
     if (docker) this.strategyOptions.docker = compilerRoots;
     if (compilerRoots) this.strategyOptions.compilerRoots = compilerRoots;
     if (events) this.strategyOptions.events = events;
+    if (spawn) this.strategyOptions.spawn = spawn;
   }
 
   badInputError(userSpecification) {
@@ -45,39 +47,33 @@ class CompilerSupplier {
     throw new Error(message);
   }
 
-  load() {
+  async load() {
     const userSpecification = this.version;
 
-    return new Promise(async (resolve, reject) => {
-      let strategy;
-      const useDocker = this.docker;
-      const useNative = userSpecification === "native";
-      const useSpecifiedLocal =
-        userSpecification && this.fileExists(userSpecification);
-      const isValidVersionRange = semver.validRange(userSpecification);
+    let strategy;
+    const useDocker = this.docker;
+    const useNative = userSpecification === "native";
+    const useSpecifiedLocal =
+      userSpecification && this.fileExists(userSpecification);
+    const isValidVersionRange = semver.validRange(userSpecification);
 
-      if (useDocker) {
-        strategy = new Docker(this.strategyOptions);
-      } else if (useNative) {
-        strategy = new Native(this.strategyOptions);
-      } else if (useSpecifiedLocal) {
-        strategy = new Local(this.strategyOptions);
-      } else if (isValidVersionRange) {
-        strategy = new VersionRange(this.strategyOptions);
-      }
+    if (useDocker) {
+      strategy = new Docker(this.strategyOptions);
+    } else if (useNative) {
+      strategy = new Native(this.strategyOptions);
+    } else if (useSpecifiedLocal) {
+      strategy = new Local(this.strategyOptions);
+    } else if (isValidVersionRange) {
+      strategy = new VersionRange(this.strategyOptions);
+    }
 
-      if (strategy) {
-        try {
-          const solc = await strategy.load(userSpecification);
-          const parserSolc = await this.loadParserSolc(this.parser, solc);
-          resolve({ solc, parserSolc });
-        } catch (error) {
-          reject(error);
-        }
-      } else {
-        reject(this.badInputError(userSpecification));
-      }
-    });
+    if (strategy) {
+      const solc = await strategy.load(userSpecification);
+      const parserSolc = await this.loadParserSolc(this.parser, solc);
+      return { solc, parserSolc };
+    } else {
+      throw this.badInputError(userSpecification);
+    }
   }
 
   async loadParserSolc(parser, solc) {
@@ -116,7 +112,9 @@ class CompilerSupplier {
           .filter(build => build["prerelease"])
           .map(build => build["longVersion"]);
 
-        const releases = Object.keys(list.releases);
+        const { rsort } = semver;
+        // ensure releases are listed in descending order
+        const releases = rsort(Object.keys(list.releases));
 
         return {
           prereleases: prereleases,
@@ -124,6 +122,10 @@ class CompilerSupplier {
           latestRelease: list.latestRelease
         };
       });
+  }
+
+  static getDefaultVersion() {
+    return defaultSolcVersion;
   }
 }
 

@@ -6,13 +6,12 @@ import * as Conversion from "@truffle/codec/conversion";
 import * as Format from "@truffle/codec/format";
 import read from "@truffle/codec/read";
 import * as Basic from "@truffle/codec/basic";
-import * as Bytes from "@truffle/codec/bytes";
 import * as Memory from "@truffle/codec/memory";
 import * as Storage from "@truffle/codec/storage";
 import * as Pointer from "@truffle/codec/pointer";
 import { DecoderRequest } from "@truffle/codec/types";
 import * as Evm from "@truffle/codec/evm";
-import { DecodingError } from "@truffle/codec/errors";
+import { handleDecodingError } from "@truffle/codec/errors";
 
 export function* decodeStack(
   dataType: Format.Types.Type,
@@ -23,12 +22,7 @@ export function* decodeStack(
   try {
     rawValue = yield* read(pointer, info.state);
   } catch (error) {
-    return <Format.Errors.ErrorResult>{
-      //no idea why TS is failing here
-      type: dataType,
-      kind: "error" as const,
-      error: (<DecodingError>error).error
-    };
+    return handleDecodingError(dataType, error);
   }
   const literalPointer: Pointer.StackLiteralPointer = {
     location: "stackliteral" as const,

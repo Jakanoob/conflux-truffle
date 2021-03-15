@@ -6,6 +6,7 @@ import Session from "./session";
 import { createNestedSelector } from "reselect-tree";
 
 import dataSelector from "./data/selectors";
+import txlogSelector from "./txlog/selectors";
 import astSelector from "./ast/selectors";
 import traceSelector from "./trace/selectors";
 import evmSelector from "./evm/selectors";
@@ -19,25 +20,21 @@ import { Compilations } from "@truffle/codec";
 const Debugger = {
   /**
    * Instantiates a Debugger for a given transaction hash.
+   * Throws on failure.  If you want a more failure-tolerant method,
+   * use forProject and then do a session.load inside a try.
    *
    * @param {String} txHash - transaction hash with leading "0x"
    * @param {{contracts: Array<Artifact>, files: Array<String>, provider: Web3Provider, compilations: Array<Compilation>}} options -
    * @return {Debugger} instance
    */
-  forTx: async function(txHash, options = {}) {
+  forTx: async function (txHash, options = {}) {
     let { contracts, files, provider, compilations, lightMode } = options;
     if (!compilations) {
       compilations = Compilations.Utils.shimArtifacts(contracts, files);
     }
     let session = new Session(compilations, provider, { lightMode }, txHash);
 
-    try {
-      await session.ready();
-      debug("session ready");
-    } catch (e) {
-      debug("error occurred, unloaded");
-      session.unload();
-    }
+    await session.ready();
 
     return session;
   },
@@ -48,7 +45,7 @@ const Debugger = {
    * @param {{contracts: Array<Artifact>, files: Array<String>, provider: Web3Provider, compilations: Array<Compilation>}} options -
    * @return {Debugger} instance
    */
-  forProject: async function(options = {}) {
+  forProject: async function (options = {}) {
     let { contracts, files, provider, compilations, lightMode } = options;
     if (!compilations) {
       compilations = Compilations.Utils.shimArtifacts(contracts, files);
@@ -78,6 +75,7 @@ const Debugger = {
     return createNestedSelector({
       ast: astSelector,
       data: dataSelector,
+      txlog: txlogSelector,
       trace: traceSelector,
       evm: evmSelector,
       solidity: soliditySelector,

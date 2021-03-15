@@ -10,8 +10,8 @@ import * as trace from "lib/trace/sagas";
 
 import solidity from "../selectors";
 
-export function* addSources(compilations) {
-  yield put(actions.addSources(compilations));
+export function* addSources(sources) {
+  yield put(actions.addSources(sources));
 }
 
 function* tickSaga() {
@@ -31,7 +31,8 @@ function* functionDepthSaga() {
     let jumpDirection = yield select(solidity.current.jumpDirection);
     debug("checking guard");
     let guard = yield select(solidity.current.nextFrameIsPhantom);
-    if (jumpDirection === "i" && guard) {
+    let nextSource = yield select(solidity.next.source);
+    if (jumpDirection === "i" && guard && nextSource.id !== undefined) {
       yield put(actions.clearPhantomGuard());
     } else {
       yield put(actions.jump(jumpDirection));

@@ -13,7 +13,7 @@ import {
   PaddingType
 } from "@truffle/codec/types";
 import * as Evm from "@truffle/codec/evm";
-import { DecodingError, StopDecodingError } from "@truffle/codec/errors";
+import { handleDecodingError, StopDecodingError } from "@truffle/codec/errors";
 import { byteLength } from "@truffle/codec/basic/allocate";
 
 export function* decodeBasic(
@@ -31,17 +31,8 @@ export function* decodeBasic(
   try {
     bytes = yield* read(pointer, state);
   } catch (error) {
-    //error: DecodingError
     debug("segfault, pointer %o, state: %O", pointer, state);
-    if (strict) {
-      throw new StopDecodingError((<DecodingError>error).error);
-    }
-    return <Format.Errors.ErrorResult>{
-      //no idea why TS is failing here
-      type: dataType,
-      kind: "error" as const,
-      error: (<DecodingError>error).error
-    };
+    return handleDecodingError(dataType, error, strict);
   }
   rawBytes = bytes;
 
@@ -483,7 +474,7 @@ function* decodeContractAndContext(
     address
   };
   let code = Conversion.toHexString(codeBytes);
-  let context = Contexts.Utils.findDecoderContext(info.contexts, code);
+  let context = Contexts.Utils.findContext(info.contexts, code);
   if (context !== null) {
     return {
       context,
@@ -641,7 +632,8 @@ export function decodeInternalFunction(
   }
   let name = functionEntry.name;
   let mutability = functionEntry.mutability;
-  let definedIn = Evm.Import.functionTableEntryToType(functionEntry);
+  let definedIn = Evm.Import.functionTableEntryToType(functionEntry); //may be null
+  let id = Evm.Import.makeInternalFunctionId(functionEntry);
   return {
     type: dataType,
     kind: "value" as const,
@@ -651,6 +643,7 @@ export function decodeInternalFunction(
       deployedProgramCounter: deployedPc,
       constructorProgramCounter: constructorPc,
       name,
+      id,
       definedIn,
       mutability
     }
@@ -777,5 +770,5 @@ function checkPaddingSigned(bytes: Uint8Array, length: number): boolean {
  */
 export interface ContractInfoAndContext {
   contractInfo: Format.Values.ContractValueInfo;
-  context?: Contexts.DecoderContext;
+  context?: Contexts.Context;
 }

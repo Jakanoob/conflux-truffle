@@ -1,5 +1,5 @@
 import debugModule from "debug";
-const debug = debugModule("test:data:more-decoding");
+const debug = debugModule("debugger:test:data:more-decoding");
 
 import { assert } from "chai";
 import Web3 from "web3"; //just using for utils
@@ -16,7 +16,7 @@ import evm from "lib/evm/selectors";
 import * as Codec from "@truffle/codec";
 
 const __CONTAINERS = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract ContainersTest {
 
@@ -26,12 +26,6 @@ contract ContainersTest {
   //declare needed structs
   struct Wrapper {
     uint x;
-  }
-
-  struct HasMap {
-    uint x;
-    mapping(string => string) map;
-    uint y;
   }
 
   //declare storage variables to be tested
@@ -50,7 +44,6 @@ contract ContainersTest {
 
     //declare local variables to be tested
     uint[1] memory memoryStaticArray;
-    HasMap memory memoryStructWithMap;
     uint[2] storage localStorage = pointedAt;
 
     //set up variables with values
@@ -70,9 +63,6 @@ contract ContainersTest {
 
     memoryStaticArray[0] = 107;
 
-    memoryStructWithMap.x = 107;
-    memoryStructWithMap.y = 214;
-
     //for this one, let's mix how we access it
     localStorage[0] = 107;
     pointedAt[1] = 214;
@@ -84,7 +74,7 @@ contract ContainersTest {
 `;
 
 const __KEYSANDBYTES = `
-pragma solidity ^0.6.3;
+pragma solidity ^0.8.0;
 
 contract ElementaryTest {
 
@@ -94,7 +84,7 @@ contract ElementaryTest {
 
   //storage variables to be tested
   mapping(bool => bool) boolMap;
-  mapping(byte => byte) byteMap;
+  mapping(bytes1 => bytes1) byteMap;
   mapping(bytes => bytes) bytesMap;
   mapping(uint => uint) uintMap;
   mapping(int => int) intMap;
@@ -108,12 +98,12 @@ contract ElementaryTest {
 
   function run() public {
     //local variables to be tested
-    byte oneByte;
-    byte[] memory severalBytes;
+    bytes1 oneByte;
+    bytes1[] memory severalBytes;
 
     //set up variables for testing
     oneByte = 0xff;
-    severalBytes = new byte[](1);
+    severalBytes = new bytes1[](1);
     severalBytes[0] = 0xff;
 
     boolMap[true] = true;
@@ -142,7 +132,7 @@ contract ElementaryTest {
 `;
 
 const __SPLICING = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract SpliceTest {
   //splicing is (nontrivially) used in two contexts right now:
@@ -180,7 +170,7 @@ contract SpliceTest {
 `;
 
 const __INNERMAPS = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract ComplexMappingTest {
 
@@ -206,39 +196,44 @@ contract ComplexMappingTest {
 `;
 
 const __OVERFLOW = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract OverflowTest {
 
   event Unsigned(uint8);
-  event Raw(byte);
+  event Raw(bytes1);
   event Signed(int8);
 
   function unsignedTest() public {
-    uint8[1] memory memoryByte;
-    uint8 byte1 = 255;
-    uint8 byte2 = 255;
-    uint8 sum = byte1 + byte2;
-    emit Unsigned(sum); //BREAK UNSIGNED
+    unchecked {
+      uint8[1] memory memoryByte;
+      uint8 byte1 = 255;
+      uint8 byte2 = 255;
+      uint8 sum = byte1 + byte2;
+      emit Unsigned(sum); //BREAK UNSIGNED
+    }
   }
 
   function rawTest() public {
-    byte full = 0xff;
-    byte right = full >> 1;
+    bytes1 full = 0xff;
+    bytes1 right = full >> 1;
     emit Raw(right); //BREAK RAW
   }
 
   function signedTest() public {
-    int8 byte1 = -128;
-    int8 byte2 = -128;
-    int8 sum = byte1 + byte2;
-    emit Signed(sum); //BREAK SIGNED
+    unchecked {
+      int8 byte1 = -128;
+      int8 byte2 = -128;
+      int8 sum = byte1 + byte2;
+      emit Signed(sum); //BREAK SIGNED
+    }
   }
 }
 `;
 
 const __BADBOOL = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
+pragma abicoder v1;
 
 contract BadBoolTest {
 
@@ -251,7 +246,7 @@ contract BadBoolTest {
 `;
 
 const __CIRCULAR = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 contract CircularTest {
 
@@ -275,7 +270,7 @@ contract CircularTest {
 `;
 
 const __GLOBALDECLS = `
-pragma solidity ^0.6.1;
+pragma solidity ^0.8.0;
 
 struct GlobalStruct {
   uint x;
@@ -310,17 +305,17 @@ let sources = {
   "GlobalDeclarations.sol": __GLOBALDECLS
 };
 
-describe("Further Decoding", function() {
+describe("Further Decoding", function () {
   var provider;
 
   var abstractions;
   var compilations;
 
-  before("Create Provider", async function() {
+  before("Create Provider", async function () {
     provider = Ganache.provider({ seed: "debugger", gasLimit: 7000000 });
   });
 
-  before("Prepare contracts and artifacts", async function() {
+  before("Prepare contracts and artifacts", async function () {
     this.timeout(30000);
 
     let prepared = await prepareContracts(provider, sources);
@@ -328,7 +323,7 @@ describe("Further Decoding", function() {
     compilations = prepared.compilations;
   });
 
-  it("Decodes various reference types correctly", async function() {
+  it("Decodes various reference types correctly", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.ContainersTest.deployed();
@@ -338,11 +333,9 @@ describe("Further Decoding", function() {
     let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
     let sourceId = bugger.view(solidity.current.source).id;
-    let compilationId = bugger.view(solidity.current.source).compilationId;
     let source = bugger.view(solidity.current.source).source;
     await bugger.addBreakpoint({
       sourceId,
-      compilationId,
       line: lineOf("break here", source)
     });
 
@@ -354,7 +347,6 @@ describe("Further Decoding", function() {
 
     const expectedResult = {
       memoryStaticArray: [107],
-      memoryStructWithMap: { x: 107, map: {}, y: 214 },
       localStorage: [107, 214],
       storageStructArray: [{ x: 107 }],
       storageArrayArray: [[2, 3]],
@@ -367,7 +359,7 @@ describe("Further Decoding", function() {
     assert.deepInclude(variables, expectedResult);
   });
 
-  it("Decodes elementary types and mappings correctly", async function() {
+  it("Decodes elementary types and mappings correctly", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.ElementaryTest.deployed();
@@ -378,11 +370,9 @@ describe("Further Decoding", function() {
     let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
     let sourceId = bugger.view(solidity.current.source).id;
-    let compilationId = bugger.view(solidity.current.source).compilationId;
     let source = bugger.view(solidity.current.source).source;
     await bugger.addBreakpoint({
       sourceId,
-      compilationId,
       line: lineOf("break here", source)
     });
 
@@ -397,7 +387,7 @@ describe("Further Decoding", function() {
       boolMap: { true: true },
       byteMap: { "0x01": "0x01" },
       bytesMap: { "0x01": "0x01" },
-      uintMap: { "1": 1, "2": 2 },
+      uintMap: { 1: 1, 2: 2 },
       intMap: { "-1": -1 },
       stringMap: { "0xdeadbeef": "0xdeadbeef", "12345": "12345" },
       addressMap: { [address]: address },
@@ -410,7 +400,7 @@ describe("Further Decoding", function() {
     assert.deepInclude(variables, expectedResult);
   });
 
-  it("Splices locations correctly", async function() {
+  it("Splices locations correctly", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.SpliceTest.deployed();
@@ -420,11 +410,9 @@ describe("Further Decoding", function() {
     let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
     let sourceId = bugger.view(solidity.current.source).id;
-    let compilationId = bugger.view(solidity.current.source).compilationId;
     let source = bugger.view(solidity.current.source).source;
     await bugger.addBreakpoint({
       sourceId,
-      compilationId,
       line: lineOf("break here", source)
     });
 
@@ -447,7 +435,7 @@ describe("Further Decoding", function() {
     assert.deepInclude(variables, expectedResult);
   });
 
-  it("Decodes inner mappings correctly and keeps path info", async function() {
+  it("Decodes inner mappings correctly and keeps path info", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.ComplexMappingTest.deployed();
@@ -499,7 +487,7 @@ describe("Further Decoding", function() {
     }
   });
 
-  it("Cleans badly-encoded booleans used as mapping keys", async function() {
+  it("Cleans badly-encoded booleans used as mapping keys", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.BadBoolTest.deployed();
@@ -529,7 +517,7 @@ describe("Further Decoding", function() {
     assert.deepInclude(variables, expectedResult);
   });
 
-  it("Handles globally-declared structs and enums", async function() {
+  it("Handles globally-declared structs and enums", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.GlobalDeclarationTest.deployed();
@@ -553,7 +541,7 @@ describe("Further Decoding", function() {
     assert.deepInclude(variables, expectedResult);
   });
 
-  it("Decodes circular structures", async function() {
+  it("Decodes circular structures", async function () {
     this.timeout(12000);
 
     let instance = await abstractions.CircularTest.deployed();
@@ -563,11 +551,9 @@ describe("Further Decoding", function() {
     let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
     let sourceId = bugger.view(solidity.current.source).id;
-    let compilationId = bugger.view(solidity.current.source).compilationId;
     let source = bugger.view(solidity.current.source).source;
     await bugger.addBreakpoint({
       sourceId,
-      compilationId,
       line: lineOf("BREAK HERE", source)
     });
 
@@ -583,8 +569,8 @@ describe("Further Decoding", function() {
     assert.strictEqual(circular.children[0], circular);
   });
 
-  describe("Overflow", function() {
-    it("Discards padding on unsigned integers", async function() {
+  describe("Overflow", function () {
+    it("Discards padding on unsigned integers", async function () {
       let instance = await abstractions.OverflowTest.deployed();
       let receipt = await instance.unsignedTest();
       let txHash = receipt.tx;
@@ -592,11 +578,9 @@ describe("Further Decoding", function() {
       let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
       let sourceId = bugger.view(solidity.current.source).id;
-      let compilationId = bugger.view(solidity.current.source).compilationId;
       let source = bugger.view(solidity.current.source).source;
       await bugger.addBreakpoint({
         sourceId,
-        compilationId,
         line: lineOf("BREAK UNSIGNED", source)
       });
 
@@ -616,7 +600,7 @@ describe("Further Decoding", function() {
       assert.include(variables, expectedResult);
     });
 
-    it("Discards padding on signed integers", async function() {
+    it("Discards padding on signed integers", async function () {
       let instance = await abstractions.OverflowTest.deployed();
       let receipt = await instance.signedTest();
       let txHash = receipt.tx;
@@ -624,11 +608,9 @@ describe("Further Decoding", function() {
       let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
       let sourceId = bugger.view(solidity.current.source).id;
-      let compilationId = bugger.view(solidity.current.source).compilationId;
       let source = bugger.view(solidity.current.source).source;
       await bugger.addBreakpoint({
         sourceId,
-        compilationId,
         line: lineOf("BREAK SIGNED", source)
       });
 
@@ -648,7 +630,7 @@ describe("Further Decoding", function() {
       assert.include(variables, expectedResult);
     });
 
-    it("Discards padding on static bytestrings", async function() {
+    it("Discards padding on static bytestrings", async function () {
       let instance = await abstractions.OverflowTest.deployed();
       let receipt = await instance.rawTest();
       let txHash = receipt.tx;
@@ -656,11 +638,9 @@ describe("Further Decoding", function() {
       let bugger = await Debugger.forTx(txHash, { provider, compilations });
 
       let sourceId = bugger.view(solidity.current.source).id;
-      let compilationId = bugger.view(solidity.current.source).compilationId;
       let source = bugger.view(solidity.current.source).source;
       await bugger.addBreakpoint({
         sourceId,
-        compilationId,
         line: lineOf("BREAK RAW", source)
       });
 

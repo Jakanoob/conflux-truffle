@@ -6,7 +6,6 @@ import * as AbiData from "@truffle/codec/abi-data";
 import * as Format from "@truffle/codec/format";
 import * as Pointer from "@truffle/codec/pointer";
 import * as Basic from "@truffle/codec/basic";
-import * as Bytes from "@truffle/codec/bytes";
 import * as Evm from "@truffle/codec/evm";
 import { DecoderRequest, DecoderOptions } from "@truffle/codec/types";
 import * as Memory from "@truffle/codec/memory";
@@ -65,6 +64,7 @@ function* decodeDispatch(
       //(if it's a nowhere pointer, this will return an error result, of course)
       //also: we force zero-padding!
       return yield* Basic.Decode.decodeBasic(dataType, pointer, info, {
+        ...options,
         paddingMode: "zero"
       });
 
@@ -73,6 +73,7 @@ function* decodeDispatch(
       //rather than located via a pointer -- only comes up when decoding immutables
       //in a constructor.  thus, we turn on the forceRightPadding option.
       return yield* Memory.Decode.decodeMemory(dataType, pointer, info, {
+        ...options,
         paddingMode: "right"
       });
   }

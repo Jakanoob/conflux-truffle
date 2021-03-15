@@ -1,7 +1,7 @@
-const Contracts = require("../new");
+const Contracts = require("../");
 const assert = require("assert");
-const { existsSync, removeSync } = require("fs-extra");
-const { join } = require("path");
+const {existsSync, removeSync} = require("fs-extra");
+const {join} = require("path");
 
 let config;
 
@@ -37,8 +37,7 @@ describe("Contracts.compile", () => {
   describe("when config.all is true", () => {
     it("recompiles all contracts in contracts_directory", async () => {
       // initial compile
-      const { contracts } = await Contracts.compile(config);
-      await Contracts.save(config, contracts);
+      const {contracts} = await Contracts.compileAndSave(config);
 
       let contractName = contracts[0].contractName;
       assert(
@@ -47,15 +46,22 @@ describe("Contracts.compile", () => {
 
       // compile again
       config.all = true;
-      const { compilations } = await Contracts.compile(config);
-      await Contracts.save(config, contracts);
+      const {compilations} = await Contracts.compileAndSave(config);
 
       assert(
-        compilations.solc.sourceIndexes[0] ===
+        compilations[0].sourceIndexes[0] ===
           join(
             `${process.cwd()}/${config.contracts_directory}/${contractName}.sol`
           )
       );
     }).timeout(4000);
+
+    it("provides an array of sources in compilation result", async () => {
+      config.all = true;
+      const {sources} = await Contracts.compileAndSave(config);
+
+      assert(sources.length === 1);
+      assert(existsSync(sources[0].sourcePath));
+    });
   });
 });

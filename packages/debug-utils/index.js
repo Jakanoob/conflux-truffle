@@ -1,15 +1,37 @@
-var OS = require("os");
-var dir = require("node-dir");
-var path = require("path");
-var debug = require("debug")("debug-utils");
-var BN = require("bn.js");
-var util = require("util");
-var Codec = require("@truffle/codec");
+const OS = require("os");
+const debug = require("debug")("debug-utils");
+const util = require("util");
+const Codec = require("@truffle/codec");
+const BN = require("bn.js");
 
-var chromafi = require("@trufflesuite/chromafi");
-var hljsDefineSolidity = require("highlightjs-solidity");
+const chromafi = require("@trufflesuite/chromafi");
+const hljsDefineSolidity = require("highlightjs-solidity");
 hljsDefineSolidity(chromafi.hljs);
-var chalk = require("chalk");
+const chalk = require("chalk");
+
+const panicTable = {
+  0x01: "Failed assertion",
+  0x11: "Arithmetic overflow",
+  0x12: "Division by zero",
+  0x21: "Enum value out of bounds",
+  0x22: "Malformed string",
+  0x31: "Array underflow",
+  0x32: "Index out of bounds",
+  0x41: "Oversized array or out of memory",
+  0x51: "Call to invalid function"
+};
+
+const verbosePanicTable = {
+  0x01: "An assert() check was not satisfied.",
+  0x11: "An arithmetic overflow occurred outside an unchecked { ... } block.",
+  0x12: "A division by zero occurred.",
+  0x21: "An integer was cast to an enum type that cannot hold it.",
+  0x22: "There was an attempt to read an incorrectly-encoded string or bytestring.",
+  0x31: "An empty array's pop() method was called.",
+  0x32: "An array or bytestring was indexed or sliced with an out-of-bounds index.",
+  0x41: "An oversized array was created, or the contract ran out of memory.",
+  0x51: "An uninitialized internal function pointer was called."
+};
 
 const commandReference = {
   "o": "step over",
@@ -17,7 +39,7 @@ const commandReference = {
   "u": "step out",
   "n": "step next",
   ";": "step instruction (include number to step multiple)",
-  "p": "print instruction & state (can specify locations, e.g. p mem; see docs)",
+  "p": "print instruction & state (`p [mem|cal|sto]*`; see docs for more)",
   "l": "print additional source context",
   "h": "print this help",
   "v": "print variables and values",
@@ -25,14 +47,42 @@ const commandReference = {
   "+": "add watch expression (`+:<expr>`)",
   "-": "remove watch expression (-:<expr>)",
   "?": "list existing watch expressions and breakpoints",
-  "b": "add breakpoint",
-  "B": "remove breakpoint",
+  "b": "add breakpoint (`b [[<source-file>:]<line-number>]`; see docs for more)",
+  "B": "remove breakpoint (similar to adding, or `B all` to remove all)",
   "c": "continue until breakpoint",
   "q": "quit",
   "r": "reset",
   "t": "load new transaction",
   "T": "unload transaction",
-  "s": "print stacktrace"
+  "s": "print stacktrace",
+  "g": "turn on generated sources",
+  "G": "turn off generated sources except via `;`"
+};
+
+const shortCommandReference = {
+  "o": "step over",
+  "i": "step into",
+  "u": "step out",
+  "n": "step next",
+  ";": "step instruction",
+  "p": "print state",
+  "l": "print context",
+  "h": "print help",
+  "v": "print variables",
+  ":": "evaluate",
+  "+": "add watch",
+  "-": "remove watch",
+  "?": "list watches & breakpoints",
+  "b": "add breakpoint",
+  "B": "remove breakpoint",
+  "c": "continue",
+  "q": "quit",
+  "r": "reset",
+  "t": "load",
+  "T": "unload",
+  "s": "stacktrace",
+  "g": "turn on generated sources",
+  "G": "turn off generated sources"
 };
 
 const truffleColors = {
@@ -51,29 +101,87 @@ const truffleColors = {
 
 const DEFAULT_TAB_WIDTH = 8;
 
+const trufflePalette = {
+  /* base (chromafi special, not hljs) */
+  "base": chalk,
+  "lineNumbers": chalk,
+  "trailingSpace": chalk,
+  /* classes hljs-solidity actually uses */
+  "keyword": truffleColors.mint,
+  "number": truffleColors.red,
+  "string": truffleColors.green,
+  "params": truffleColors.pink,
+  "builtIn": truffleColors.watermelon,
+  "built_in": truffleColors.watermelon, //just to be sure
+  "literal": truffleColors.watermelon,
+  "function": truffleColors.orange,
+  "title": truffleColors.orange,
+  "class": truffleColors.orange,
+  "comment": truffleColors.comment,
+  "doctag": truffleColors.comment,
+  /* classes it might soon use! */
+  "meta": truffleColors.pink,
+  "metaString": truffleColors.green,
+  "meta-string": truffleColors.green, //similar
+  /* classes it doesn't currently use but notionally could */
+  "type": truffleColors.orange,
+  "symbol": truffleColors.orange,
+  "metaKeyword": truffleColors.mint,
+  "meta-keyword": truffleColors.mint, //again, to be sure
+  /* classes that don't make sense for Solidity */
+  "regexp": chalk, //solidity does not have regexps
+  "subst": chalk, //or string interpolation
+  "name": chalk, //or s-expressions
+  "builtInName": chalk, //or s-expressions, again
+  "builtin-name": chalk, //just to be sure
+  /* classes for config, markup, CSS, templates, diffs (not programming) */
+  "section": chalk,
+  "tag": chalk,
+  "attr": chalk,
+  "attribute": chalk,
+  "variable": chalk,
+  "bullet": chalk,
+  "code": chalk,
+  "emphasis": chalk,
+  "strong": chalk,
+  "formula": chalk,
+  "link": chalk,
+  "quote": chalk,
+  "selectorAttr": chalk, //lotta redundancy follows
+  "selector-attr": chalk,
+  "selectorClass": chalk,
+  "selector-class": chalk,
+  "selectorId": chalk,
+  "selector-id": chalk,
+  "selectorPseudo": chalk,
+  "selector-pseudo": chalk,
+  "selectorTag": chalk,
+  "selector-tag": chalk,
+  "templateTag": chalk,
+  "template-tag": chalk,
+  "templateVariable": chalk,
+  "template-variable": chalk,
+  "addition": chalk,
+  "deletion": chalk
+};
+
 var DebugUtils = {
   truffleColors, //make these externally available
 
-  gatherArtifacts: async function(config) {
-    // Gather all available contract artifacts
-    let files = await dir.promiseFiles(config.contracts_build_directory);
-
-    var contracts = files
-      .filter(file_path => {
-        return path.extname(file_path) === ".json";
-      })
-      .map(file_path => {
-        return path.basename(file_path, ".json");
-      })
-      .map(contract_name => {
-        return config.resolver.require(contract_name);
-      });
-
-    await Promise.all(
-      contracts.map(abstraction => abstraction.detectNetwork())
-    );
-
-    return contracts;
+  //panicCode may be either a number or a BN
+  panicString: function (panicCode, verbose = false) {
+    const unknownString = "Unknown panic";
+    const verboseUnknownString = "A panic occurred of unrecognized type.";
+    if (BN.isBN(panicCode)) {
+      try {
+        panicCode = panicCode.toNumber();
+      } catch (_) {
+        return verbose ? verboseUnknownString : unknownString;
+      }
+    }
+    return verbose
+      ? verbosePanicTable[panicCode] || verboseUnknownString
+      : panicTable[panicCode] || unknownString;
   },
 
   //attempts to test whether a given compilation is a real compilation,
@@ -82,13 +190,14 @@ var DebugUtils = {
   //(anyway worst case failing it just results in a recompilation)
   //if it isn't real, but passes this test anyway... well, I'm hoping it should
   //still be usable all the same!
-  isUsableCompilation: function(compilation) {
+  isUsableCompilation: function (compilation) {
     //check #1: is the source order reliable?
     if (compilation.unreliableSourceOrder) {
+      debug("unreliable source order");
       return false;
     }
 
-    //check #2: are source indices consecutive?
+    //check #2: are (user) source indices consecutive?
     //(while nonconsecutivity should not be a problem by itself, this probably
     //indicates a name collision of a sort that will be fatal for other
     //reasons)
@@ -97,10 +206,39 @@ var DebugUtils = {
     //(since the real concern is empty spots, not undefined, yet this turns
     //this up anyhow)
     if (compilation.sources.includes(undefined)) {
+      debug("nonconsecutive sources");
       return false;
     }
 
-    //check #3: are there any AST ID collisions?
+    const lowestInternalIndex = Math.min(
+      ...compilation.contracts.map(contract => {
+        //find first defined index
+        let lowestConstructor = (contract.generatedSources || []).findIndex(
+          x => x !== undefined
+        );
+        if (lowestConstructor === -1) {
+          lowestConstructor = Infinity;
+        }
+        let lowestDeployed = (
+          contract.deployedGeneratedSources || []
+        ).findIndex(x => x !== undefined);
+        if (lowestDeployed === -1) {
+          lowestDeployed = Infinity;
+        }
+        return Math.min(lowestConstructor, lowestDeployed);
+      })
+    );
+    if (lowestInternalIndex !== Infinity) {
+      //Infinity would mean there were none
+      if (lowestInternalIndex !== compilation.sources.length) {
+        //if it's a usable compilation, these should be equal,
+        //as length = 1 + last user source
+        debug("gap before internal sources");
+        return false;
+      }
+    }
+
+    //check #4: are there any AST ID collisions?
     let astIds = new Set();
 
     let allIDsUnseenSoFar = node => {
@@ -109,6 +247,7 @@ var DebugUtils = {
       } else if (node !== null && typeof node === "object") {
         if (node.id !== undefined) {
           if (astIds.has(node.id)) {
+            debug("id occured twice: %o", node.id);
             return false;
           } else {
             astIds.add(node.id);
@@ -120,13 +259,16 @@ var DebugUtils = {
       }
     };
 
-    //now: walk each AST
-    return compilation.sources.every(
-      source => (source ? allIDsUnseenSoFar(source.ast) : true)
+    //now: walk each Solidity AST
+    //(and don't bother checking generated sources as they're
+    //never Solidity)
+    debug("checking Solidity ASTs for collisions");
+    return compilation.sources.every(source =>
+      !source || source.language !== "Solidity" || allIDsUnseenSoFar(source.ast)
     );
   },
 
-  formatStartMessage: function(withTransaction) {
+  formatStartMessage: function (withTransaction) {
     if (withTransaction) {
       return "Gathering information about your project and the transaction...";
     } else {
@@ -134,26 +276,26 @@ var DebugUtils = {
     }
   },
 
-  formatTransactionStartMessage: function() {
+  formatTransactionStartMessage: function () {
     return "Gathering information about the transaction...";
   },
 
-  formatCommandDescription: function(commandId) {
+  formatCommandDescription: function (commandId) {
     return (
       truffleColors.mint(`(${commandId})`) + " " + commandReference[commandId]
     );
   },
 
-  formatPrompt: function(network, txHash) {
+  formatPrompt: function (network, txHash) {
     return txHash !== undefined
       ? `debug(${network}:${txHash.substring(0, 10)}...)> `
       : `debug(${network})> `;
   },
 
-  formatAffectedInstances: function(instances) {
+  formatAffectedInstances: function (instances) {
     var hasAllSource = true;
 
-    var lines = Object.keys(instances).map(function(address) {
+    var lines = Object.keys(instances).map(function (address) {
       var instance = instances[address];
 
       if (instance.contractName) {
@@ -167,6 +309,10 @@ var DebugUtils = {
       return " " + address + "(UNKNOWN)";
     });
 
+    if (lines.length === 0) {
+      lines.push("No affected addresses found.");
+    }
+
     if (!hasAllSource) {
       lines.push("");
       lines.push(
@@ -179,30 +325,29 @@ var DebugUtils = {
     return lines.join(OS.EOL);
   },
 
-  formatHelp: function(lastCommand) {
-    if (!lastCommand) {
-      lastCommand = "n";
-    }
-
+  formatHelp: function (lastCommand = "n") {
     var prefix = [
       "Commands:",
       truffleColors.mint("(enter)") +
         " last command entered (" +
-        commandReference[lastCommand] +
+        shortCommandReference[lastCommand] +
         ")"
     ];
 
     var commandSections = [
       ["o", "i", "u", "n"],
+      ["c"],
       [";"],
+      ["g", "G"],
       ["p"],
       ["l", "s", "h"],
       ["q", "r", "t", "T"],
-      ["b", "B", "c"],
+      ["b"],
+      ["B"],
       ["+", "-"],
       ["?"],
       ["v", ":"]
-    ].map(function(shortcuts) {
+    ].map(function (shortcuts) {
       return shortcuts.map(DebugUtils.formatCommandDescription).join(", ");
     });
 
@@ -213,7 +358,7 @@ var DebugUtils = {
     return lines.join(OS.EOL);
   },
 
-  tabsToSpaces: function(inputLine, tabLength = DEFAULT_TAB_WIDTH) {
+  tabsToSpaces: function (inputLine, tabLength = DEFAULT_TAB_WIDTH) {
     //note: I'm going to assume for these purposes that everything is
     //basically ASCII and I don't have to worry about astral planes or
     //grapheme clusters.  Sorry. :-/
@@ -242,13 +387,13 @@ var DebugUtils = {
     return line;
   },
 
-  formatLineNumberPrefix: function(line, number, cols) {
+  formatLineNumberPrefix: function (line, number, cols) {
     const prefix = String(number).padStart(cols) + ": ";
 
     return prefix + line;
   },
 
-  formatLinePointer: function(
+  formatLinePointer: function (
     line,
     startCol,
     endCol,
@@ -290,7 +435,7 @@ var DebugUtils = {
   //been split into lines here, they're not the raw text
   //ALSO: assuming here that colorized source has been detabbed
   //but that uncolorized source has not
-  formatRangeLines: function(
+  formatRangeLines: function (
     source,
     range,
     uncolorizedSource,
@@ -353,10 +498,9 @@ var DebugUtils = {
     return allLines.join(OS.EOL);
   },
 
-  formatBreakpointLocation: function(
+  formatBreakpointLocation: function (
     breakpoint,
     here,
-    currentCompilationId,
     currentSourceId,
     sourceNames
   ) {
@@ -369,19 +513,15 @@ var DebugUtils = {
     } else {
       baseMessage = `line ${breakpoint.line + 1}`;
     }
-    if (
-      breakpoint.compilationId !== currentCompilationId ||
-      breakpoint.sourceId !== currentSourceId
-    ) {
-      let sourceName =
-        sourceNames[breakpoint.compilationId][breakpoint.sourceId];
+    if (breakpoint.sourceId !== currentSourceId) {
+      const sourceName = sourceNames[breakpoint.sourceId];
       return baseMessage + ` in ${sourceName}`;
     } else {
       return baseMessage;
     }
   },
 
-  formatInstruction: function(traceIndex, traceLength, instruction) {
+  formatInstruction: function (traceIndex, traceLength, instruction) {
     return (
       "(" +
       traceIndex +
@@ -392,7 +532,7 @@ var DebugUtils = {
     );
   },
 
-  formatPC: function(pc) {
+  formatPC: function (pc) {
     let hex = pc.toString(16);
     if (hex.length % 2 !== 0) {
       hex = "0" + hex; //ensure even length
@@ -400,7 +540,7 @@ var DebugUtils = {
     return "  PC = " + pc.toString() + " = 0x" + hex;
   },
 
-  formatStack: function(stack) {
+  formatStack: function (stack) {
     //stack here is an array of hex words (no "0x")
     var formatted = stack.map((item, index) => {
       item = truffleColors.orange(item);
@@ -423,7 +563,7 @@ var DebugUtils = {
     return formatted.join(OS.EOL);
   },
 
-  formatMemory: function(memory) {
+  formatMemory: function (memory) {
     //note memory here is an array of hex words (no "0x"),
     //not a single long hex string
 
@@ -453,14 +593,12 @@ var DebugUtils = {
     return formatted.join(OS.EOL);
   },
 
-  formatStorage: function(storage) {
+  formatStorage: function (storage) {
     //storage here is an object mapping hex words to hex words (no 0x)
 
     //first: sort the keys (slice to clone as sort is in-place)
     //note: we can use the default sort here; it will do the righ thing
-    let slots = Object.keys(storage)
-      .slice()
-      .sort();
+    let slots = Object.keys(storage).slice().sort();
 
     let formatted = slots.map((slot, index) => {
       if (
@@ -484,7 +622,7 @@ var DebugUtils = {
     return formatted.join(OS.EOL);
   },
 
-  formatCalldata: function(calldata) {
+  formatCalldata: function (calldata) {
     //takes a Uint8Array
     let selector = calldata.slice(0, Codec.Evm.Utils.SELECTOR_SIZE);
     let words = [];
@@ -536,7 +674,7 @@ var DebugUtils = {
     return formatted.join(OS.EOL);
   },
 
-  formatValue: function(value, indent = 0, nativized = false) {
+  formatValue: function (value, indent = 0, nativized = false) {
     let inspectOptions = {
       colors: true,
       depth: null,
@@ -557,122 +695,78 @@ var DebugUtils = {
       .join(OS.EOL);
   },
 
-  formatStacktrace: function(stacktrace, indent = 2) {
-    //get message from stacktrace
-    const message = stacktrace[0].message;
+  formatStacktrace: function (stacktrace, indent = 2) {
+    //get message or panic code from stacktrace
+    const { message, panic } = stacktrace[0];
     //we want to print inner to outer, so first, let's
     //reverse
     stacktrace = stacktrace.slice().reverse(); //reverse is in-place so clone first
-    let lines = stacktrace.map(({ functionName, contractName, location }) => {
-      let name;
-      if (contractName && functionName) {
-        name = `${contractName}.${functionName}`;
-      } else if (contractName) {
-        name = contractName;
-      } else {
-        name = "unknown function";
-      }
-      if (location) {
-        let {
-          source: { sourcePath },
-          sourceRange: {
-            lines: {
-              start: { line, column }
+    let lines = stacktrace.map(
+      ({ functionName, contractName, address, location, type }) => {
+        let name;
+        if (contractName && functionName) {
+          name = `${contractName}.${functionName}`;
+        } else if (contractName) {
+          name = contractName;
+        } else if (functionName) {
+          name = functionName;
+        } else {
+          name = "unknown function";
+        }
+        let locationString;
+        if (location) {
+          let {
+            source: { sourcePath },
+            sourceRange: {
+              lines: {
+                start: { line, column }
+              }
             }
-          }
-        } = location;
-        return `at ${name} (${sourcePath}:${line + 1}:${column + 1})`; //add 1 to account for 0-indexing
-      } else {
-        return `at ${name} (unknown location)`;
+          } = location;
+          locationString = sourcePath
+            ? `${sourcePath}:${line + 1}:${column + 1}` //add 1 to account for 0-indexing
+            : "unknown location";
+        } else {
+          locationString = "unknown location";
+        }
+        let addressString =
+          type === "external"
+            ? address !== undefined
+              ? ` [address ${address}]`
+              : " [unknown address]"
+            : "";
+        return `at ${name}${addressString} (${locationString})`;
       }
-    });
+    );
     let status = stacktrace[0].status;
     if (status != undefined) {
-      lines.unshift(
-        status
-          ? message !== undefined
-            ? `Error: Improper return (caused message: ${message})`
-            : "Error: Improper return (may be an unexpected self-destruct)"
-          : message !== undefined
-            ? `Error: Revert (message: ${message})`
-            : "Error: Revert or exceptional halt"
-      );
+      let statusLine;
+      if (message !== undefined) {
+        statusLine = status
+          ? `Error: Improper return (caused message: ${message})`
+          : `Error: Revert (message: ${message})`;
+      } else if (panic !== undefined) {
+        statusLine = status
+          ? `Panic: Improper return (caused ${DebugUtils.panicString(
+              panic
+            ).toLowerCase()} (code 0x${panic.toString(16)}))`
+          : `Panic: ${DebugUtils.panicString(panic)} (code 0x${panic.toString(
+              16
+            )})`;
+      } else {
+        statusLine = status
+          ? "Error: Improper return (may be an unexpected self-destruct)"
+          : "Error: Revert or exceptional halt";
+      }
+      lines.unshift(statusLine);
     }
-    let indented = lines.map(
-      (line, index) => (index === 0 ? line : " ".repeat(indent) + line)
+    let indented = lines.map((line, index) =>
+      index === 0 ? line : " ".repeat(indent) + line
     );
     return indented.join(OS.EOL);
   },
 
-  colorize: function(code) {
-    //I'd put these outside the function
-    //but then it gives me errors, because
-    //you can't just define self-referential objects like that...
-
-    const trufflePalette = {
-      /* base (chromafi special, not hljs) */
-      "base": chalk,
-      "lineNumbers": chalk,
-      "trailingSpace": chalk,
-      /* classes hljs-solidity actually uses */
-      "keyword": truffleColors.mint,
-      "number": truffleColors.red,
-      "string": truffleColors.green,
-      "params": truffleColors.pink,
-      "builtIn": truffleColors.watermelon,
-      "built_in": truffleColors.watermelon, //just to be sure
-      "literal": truffleColors.watermelon,
-      "function": truffleColors.orange,
-      "title": truffleColors.orange,
-      "class": truffleColors.orange,
-      "comment": truffleColors.comment,
-      "doctag": truffleColors.comment,
-      /* classes it might soon use! */
-      "meta": truffleColors.pink,
-      "metaString": truffleColors.green,
-      "meta-string": truffleColors.green, //similar
-      /* classes it doesn't currently use but notionally could */
-      "type": truffleColors.orange,
-      "symbol": truffleColors.orange,
-      "metaKeyword": truffleColors.mint,
-      "meta-keyword": truffleColors.mint, //again, to be sure
-      /* classes that don't make sense for Solidity */
-      "regexp": chalk, //solidity does not have regexps
-      "subst": chalk, //or string interpolation
-      "name": chalk, //or s-expressions
-      "builtInName": chalk, //or s-expressions, again
-      "builtin-name": chalk, //just to be sure
-      /* classes for config, markup, CSS, templates, diffs (not programming) */
-      "section": chalk,
-      "tag": chalk,
-      "attr": chalk,
-      "attribute": chalk,
-      "variable": chalk,
-      "bullet": chalk,
-      "code": chalk,
-      "emphasis": chalk,
-      "strong": chalk,
-      "formula": chalk,
-      "link": chalk,
-      "quote": chalk,
-      "selectorAttr": chalk, //lotta redundancy follows
-      "selector-attr": chalk,
-      "selectorClass": chalk,
-      "selector-class": chalk,
-      "selectorId": chalk,
-      "selector-id": chalk,
-      "selectorPseudo": chalk,
-      "selector-pseudo": chalk,
-      "selectorTag": chalk,
-      "selector-tag": chalk,
-      "templateTag": chalk,
-      "template-tag": chalk,
-      "templateVariable": chalk,
-      "template-variable": chalk,
-      "addition": chalk,
-      "deletion": chalk
-    };
-
+  colorize: function (code, language = "Solidity") {
     const options = {
       lang: "solidity",
       colors: trufflePalette,
@@ -680,81 +774,76 @@ var DebugUtils = {
       //handling padding & numbering manually
       lineNumbers: false,
       stripIndent: false,
-      codePad: 0
+      codePad: 0,
+      tabsToSpaces: false, //we handle this ourself and don't
+      //want chromafi's padding
+      lineEndPad: false
       //NOTE: you might think you should pass highlight: true,
       //but you'd be wrong!  I don't understand this either
     };
-    return chromafi(code, options);
+    switch (language) {
+      case "Solidity":
+        return chromafi(code, options);
+      case "Yul":
+        //HACK: stick the code in an assembly block since we don't
+        //have a separate Yul language for HLJS at the moment,
+        //colorize it there, then extract it after colorization
+        const wrappedCode = "assembly {\n" + code + "\n}";
+        const colorizedWrapped = chromafi(wrappedCode, options);
+        const firstNewLine = colorizedWrapped.indexOf("\n");
+        const lastNewLine = colorizedWrapped.lastIndexOf("\n");
+        return colorizedWrapped.slice(firstNewLine + 1, lastNewLine);
+      case "Vyper":
+        options.lang = "python"; //HACK -- close enough for now!
+        return chromafi(code, options);
+      default:
+        //don't highlight
+        return code;
+    }
   },
 
   //HACK
-  //note that this is written in terms of mutating things
-  //rather than just using map() due to the need to handle
-  //circular objects
-  cleanConstructors: function(object, seenSoFar = new Map()) {
-    debug("object %o", object);
-    if (seenSoFar.has(object)) {
-      return seenSoFar.get(object);
-    }
-
-    if (Array.isArray(object)) {
-      //array case
-      let output = object.slice(); //clone
-      //set up new seenSoFar
-      let seenNow = new Map(seenSoFar);
-      seenNow.set(object, output);
-      for (let index in output) {
-        output[index] = DebugUtils.cleanConstructors(output[index], seenNow);
-      }
-      return output;
-    }
-
-    //HACK -- due to safeEval altering things, it's possible for isBN() to
-    //throw an error here
-    try {
-      //we do not want to alter BNs!
-      //(or other special objects, but that's just BNs right now)
-      if (BN.isBN(object)) {
-        return object;
-      }
-    } catch (e) {
-      //if isBN threw an error, it's not a BN, so move on
-    }
-
-    if (object && typeof object === "object") {
-      //generic object case
-      let output = Object.assign(
-        {},
-        ...Object.entries(object)
-          .filter(
-            ([key, value]) => key !== "constructor" || value !== undefined
-          )
-          .map(([key, value]) => ({
-            [key]: value //don't clean yet!
-          }))
-      );
-      //set up new seenSoFar
-      let seenNow = new Map(seenSoFar);
-      seenNow.set(object, output);
-      for (let field in output) {
-        output[field] = DebugUtils.cleanConstructors(output[field], seenNow);
-      }
-      return output;
-    }
-
-    //for strings, numbers, etc
-    return object;
-  },
-
-  //HACK
-  cleanThis: function(variables, replacement) {
+  cleanThis: function (variables, replacement) {
     return Object.assign(
       {},
-      ...Object.entries(variables).map(
-        ([variable, value]) =>
-          variable === "this" ? { [replacement]: value } : { [variable]: value }
+      ...Object.entries(variables).map(([variable, value]) =>
+        variable === "this" ? { [replacement]: value } : { [variable]: value }
       )
     );
+  },
+
+  /**
+   * HACK warning!  This function modifies the debugger state
+   * and should only be used in light mode, at startup, in a very specific way!
+   *
+   * let bugger = await Debugger.forTx(txHash, { lightMode: true, ... });
+   * const sources = await getTransactionSourcesBeforeStarting(bugger);
+   * await bugger.startFullMode();
+   *
+   * Don't go switching transactions after doing this, because there's no
+   * way at the moment to switch back into light mode in order to re-run
+   * this function.  You do *not* want to run this in full mode.
+   */
+  getTransactionSourcesBeforeStarting: async function (bugger) {
+    await bugger.reset();
+    let sources = {};
+    const { controller } = bugger.selectors;
+    while (!bugger.view(controller.current.trace.finished)) {
+      const source = bugger.view(controller.current.location.source);
+      const { compilationId, id, internal } = source;
+      //stepInto should skip internal sources, but there still might be
+      //one at the end
+      if (!internal && compilationId !== undefined && id !== undefined) {
+        sources[compilationId] = {
+          ...sources[compilationId],
+          [id]: source
+        };
+      }
+      await bugger.stepInto();
+    }
+    await bugger.reset();
+    //flatten sources before returning
+    return [].concat(...Object.values(sources).map(Object.values));
   }
 };
 

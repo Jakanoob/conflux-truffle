@@ -4,6 +4,7 @@ import {
   Abi as SchemaAbi,
   ImmutableReferences
 } from "@truffle/contract-schema/spec";
+import * as Common from "@truffle/compile-common";
 
 //Note to other people passing in compilations:
 //Please include all fields you can that aren't
@@ -41,13 +42,6 @@ export interface Compilation {
    * specified on each source and contract, but please don't actually do that.
    */
   compiler?: Compiler.CompilerVersion;
-  /**
-   * A flag intended for internal use to indicate that this compilation is not
-   * part of the user's Truffle project but rather is compiled from
-   * temporarily-downloaded external Solidity sources.  Again, this should only
-   * be used for Solidity compilations; it may cause irregularities otherwise.
-   */
-  externalSolidity?: boolean;
 }
 
 /**
@@ -60,13 +54,19 @@ export interface Source {
    */
   id?: string;
   /**
-   * The source's file path.
+   * The source's file path.  If internal is true, will not be a real file path but
+   * rather just an arbitrary name.
    */
   sourcePath?: string;
   /**
    * The source text.
    */
   source?: string;
+  /**
+   * The language for the source file.  For compatibility purposes, this may technicaly
+   * be left out, but please include it.
+   */
+  language?: string;
   /**
    * The source's abstract syntax tree.
    */
@@ -92,21 +92,21 @@ export interface Contract {
    * in the old artifacts format, or as a bytecode object in the new
    * compilation format.
    */
-  bytecode?: string | Bytecode;
+  bytecode?: string | Common.Bytecode;
   /**
    * The contract's deployed bytecode; may be given either as a string
    * in the old artifacts format, or as a bytecode object in the new
    * compilation format.
    */
-  deployedBytecode?: string | Bytecode;
+  deployedBytecode?: string | Common.Bytecode;
   /**
    * The contract's constructor source map.
    */
-  sourceMap?: string;
+  sourceMap?: string | VyperSourceMap;
   /**
    * The contract's deployed source map.
    */
-  deployedSourceMap?: string;
+  deployedSourceMap?: string | VyperSourceMap;
   /**
    * The contract's ABI.
    */
@@ -126,14 +126,26 @@ export interface Contract {
    * The ID of the contract's primary source.
    */
   primarySourceId?: string;
+  /**
+   * The contract's generated sources object as output by Solidity 0.7.2 or later.
+   * Note that this will be a sparse array.
+   */
+  generatedSources?: Source[];
+  /**
+   * The contract's deployed generated sources object as output by Solidity 0.7.2 or later.
+   * Note that this will be a sparse array.
+   */
+  deployedGeneratedSources?: Source[];
 }
 
-//defining this ourselves for now, sorry!
-export interface Bytecode {
-  bytes: string;
-  linkReferences: {
-    offsets: number[];
-    name: string;
-    length: number;
-  }[];
+export interface VyperSourceMap {
+  //breakpoints field is omitted because I don't understand it
+  //pc_breakpoints field is omitted because I don't understand it
+  pc_jump_map: {
+    [pc: number]: "-" | "i" | "o";
+  };
+  pc_pos_map: {
+    [pc: number]: [number, number, number, number];
+  };
+  pc_pos_map_compressed?: string;
 }

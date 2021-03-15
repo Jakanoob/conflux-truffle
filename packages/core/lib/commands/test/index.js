@@ -1,3 +1,4 @@
+const OS = require("os");
 const command = {
   command: "test",
   description: "Run JavaScript and Solidity tests",
@@ -46,7 +47,11 @@ const command = {
   },
   help: {
     usage:
-      "truffle test [<test_file>] [--compile-all[-debug]] [--network <name>] [--verbose-rpc] [--show-events] [--debug] [--debug-global <identifier>] [--bail] [--stacktrace[-extra]]",
+      `truffle test [<test_file>] [--compile-all[-debug]] [--compile-none] ` +
+      `[--network <name>]${OS.EOL}                             ` +
+      `[--verbose-rpc] [--show-events] [--debug] ` +
+      `[--debug-global <identifier>] [--bail]${OS.EOL}                      ` +
+      `       [--stacktrace[-extra]]`,
     options: [
       {
         option: "<test_file>",
@@ -59,6 +64,10 @@ const command = {
         description:
           "Compile all contracts instead of intelligently choosing which contracts need " +
           "to be compiled."
+      },
+      {
+        option: "--compile-none",
+        description: "Do not compile any contracts before running the tests"
       },
       {
         option: "--compile-all-debug",
@@ -113,14 +122,12 @@ const command = {
       }
     ]
   },
-  run: function(options, done) {
+  run: async function (options) {
     const Config = require("@truffle/config");
-    const { Environment, Develop } = require("@truffle/environment");
-    const {
-      copyArtifactsToTempDir,
-      determineTestFilesToRun,
-      prepareConfigAndRunTests
-    } = require("./helpers");
+    const {Environment, Develop} = require("@truffle/environment");
+    const {copyArtifactsToTempDir} = require("./copyArtifactsToTempDir");
+    const {determineTestFilesToRun} = require("./determineTestFilesToRun");
+    const {prepareConfigAndRunTests} = require("./prepareConfigAndRunTests");
 
     const config = Config.detect(options);
 
@@ -132,7 +139,7 @@ const command = {
     if (!config.network) {
       config.network = "test";
     } else {
-      Environment.detect(config).catch(done);
+      await Environment.detect(config);
     }
 
     if (config.stacktraceExtra) {
@@ -144,63 +151,51 @@ const command = {
       config.compileAll = true;
     }
 
-    let ipcDisconnect, files;
-    try {
-      const { file } = options;
-      const inputArgs = options._;
-      files = determineTestFilesToRun({
-        config,
-        inputArgs,
-        inputFile: file
-      });
-    } catch (error) {
-      return done(error);
-    }
+    const {file} = options;
+    const inputArgs = options._;
+    const files = determineTestFilesToRun({
+      config,
+      inputArgs,
+      inputFile: file
+    });
 
     if (config.networks[config.network]) {
-      Environment.detect(config)
-        .then(() => copyArtifactsToTempDir(config))
-        .then(({ config, temporaryDirectory }) => {
-          return prepareConfigAndRunTests({
-            config,
-            files,
-            temporaryDirectory
-          });
-        })
-        .then(numberOfFailures => {
-          done.call(null, numberOfFailures);
-        })
-        .catch(done);
+      await Environment.detect(config);
+      const {temporaryDirectory} = await copyArtifactsToTempDir(config);
+      const numberOfFailures = await prepareConfigAndRunTests({
+        config,
+        files,
+        temporaryDirectory
+      });
+      return numberOfFailures;
     } else {
-      const ipcOptions = { network: "test" };
+      const ipcOptions = {network: "test"};
+      const port = await require("get-port")();
 
       const ganacheOptions = {
         host: "127.0.0.1",
-        port: 7545,
+        port,
         network_id: 4447,
         mnemonic:
           "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat",
         gasLimit: config.gas,
-        time: config.genesis_time
+        time: config.genesis_time,
+        _chainId: 1337 //temporary until Ganache v3!
       };
-      Develop.connectOrStart(ipcOptions, ganacheOptions)
-        .then(({ disconnect }) => {
-          ipcDisconnect = disconnect;
-          return Environment.develop(config, ganacheOptions);
-        })
-        .then(() => copyArtifactsToTempDir(config))
-        .then(({ config, temporaryDirectory }) => {
-          return prepareConfigAndRunTests({
-            config,
-            files,
-            temporaryDirectory
-          });
-        })
-        .then(numberOfFailures => {
-          done.call(null, numberOfFailures);
-          ipcDisconnect();
-        })
-        .catch(done);
+      const { disconnect } = await Develop.connectOrStart(
+        ipcOptions,
+        ganacheOptions
+      );
+      const ipcDisconnect = disconnect;
+      await Environment.develop(config, ganacheOptions);
+      const { temporaryDirectory } = await copyArtifactsToTempDir(config);
+      const numberOfFailures = await prepareConfigAndRunTests({
+        config,
+        files,
+        temporaryDirectory
+      });
+      ipcDisconnect();
+      return numberOfFailures;
     }
   }
 };

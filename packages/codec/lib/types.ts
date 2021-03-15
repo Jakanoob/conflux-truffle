@@ -1,6 +1,6 @@
 import BN from "bn.js";
 
-import * as AbiData from "@truffle/codec/abi-data/types";
+import * as Abi from "@truffle/abi-utils";
 import * as Format from "@truffle/codec/format";
 
 /**
@@ -30,6 +30,7 @@ export type LogDecoding = EventDecoding | AnonymousDecoding;
  */
 export type ReturndataDecoding =
   | ReturnDecoding
+  | RawReturnDecoding
   | BytecodeDecoding
   | UnknownBytecodeDecoding
   | SelfDestructDecoding
@@ -44,6 +45,28 @@ export type ReturndataDecoding =
  * @Category Output
  */
 export type DecodingMode = "full" | "abi";
+
+/**
+ * Used for representing decoded state variables.
+ * @category Output
+ */
+export interface StateVariable {
+  /**
+   * The name of the variable.  Note that due to inheritance, this may not be unique
+   * among the contract's state variables.
+   */
+  name: string;
+  /**
+   * The class of the contract that defined the variable, as a Format.Types.ContractType.
+   * Note that this class may differ from that of the contract being decoded, due
+   * to inheritance.
+   */
+  class: Format.Types.ContractType;
+  /**
+   * The decoded value of the variable.  Note this is a Format.Values.Result, so it may be an error.
+   */
+  value: Format.Values.Result;
+}
 
 /**
  * This type represents a transaction decoding for an ordinary function call to a known class;
@@ -67,7 +90,7 @@ export interface FunctionDecoding {
    * The ABI entry for the function that was called.  You can use this
    * to extract the name, for instance.
    */
-  abi: AbiData.FunctionAbiEntry;
+  abi: Abi.FunctionEntry;
   /**
    * The selector for the function that was called, as a hexadecimal string.
    */
@@ -108,7 +131,7 @@ export interface ConstructorDecoding {
    * default constructors don't actually get an ABI entry, we still return an
    * ABI entry regardless in that case.
    */
-  abi: AbiData.ConstructorAbiEntry;
+  abi: Abi.ConstructorEntry;
   /**
    * The bytecode of the constructor that was called.
    */
@@ -140,7 +163,7 @@ export interface MessageDecoding {
    * The ABI entry for the contract's fallback or receive function that would
    * handle this message; will be null if there is none.
    */
-  abi: AbiData.FallbackAbiEntry | AbiData.ReceiveAbiEntry | null;
+  abi: Abi.FallbackEntry | Abi.ReceiveEntry | null;
   /**
    * The data that was sent to the contract.
    */
@@ -226,7 +249,7 @@ export interface EventDecoding {
    * The ABI entry for the event.  You can use this to extract the name, for
    * instance.
    */
-  abi: AbiData.EventAbiEntry; //should be non-anonymous
+  abi: Abi.EventEntry; //should be non-anonymous
   /**
    * The selector for the event, as a hexadecimal string.
    */
@@ -268,7 +291,7 @@ export interface AnonymousDecoding {
    * The ABI entry for the event.  You can use this to extract the name, for
    * instance.
    */
-  abi: AbiData.EventAbiEntry; //should be anonymous
+  abi: Abi.EventEntry; //should be anonymous
   /**
    * The decoding mode that was used; [see the README](../#decoding-modes) for
    * more on these.
@@ -294,6 +317,31 @@ export interface ReturnDecoding {
    * The list of decoded return values from the function.
    */
   arguments: AbiArgument[];
+  /**
+   * The decoding mode that was used; [see the README](../#decoding-modes) for
+   * more on these.
+   */
+  decodingMode: DecodingMode;
+}
+
+/**
+ * This type represents a decoding of the return data as a raw bytestring
+ * (as might be returned from a fallback function).
+ * @Category Output
+ */
+export interface RawReturnDecoding {
+  /**
+   * The kind of decoding; indicates that this is a RawReturnDecoding.
+   */
+  kind: "returnmessage";
+  /**
+   * Indicates that this kind of decoding indicates a successful return.
+   */
+  status: true;
+  /**
+   * The returned bytestring, as a hex string.
+   */
+  data: string;
   /**
    * The decoding mode that was used; [see the README](../#decoding-modes) for
    * more on these.
@@ -355,6 +403,12 @@ export interface RevertMessageDecoding {
    */
   kind: "revert";
   /**
+   * The ABI entry for the error that was thrown.  You can use this
+   * to extract the name, for instance.  This may be spoofed for built-in
+   * types of errors.
+   */
+  abi: Abi.ErrorEntry;
+  /**
    * Indicates that this kind of decoding indicates an unsuccessful return.
    */
   status: false;
@@ -398,6 +452,11 @@ export interface BytecodeDecoding {
    * The class of contract being constructed, as a Format.Types.ContractType.
    */
   class: Format.Types.ContractType;
+  /**
+   * Decodings for any immutable state variables the created contract contains.
+   * Omitted in ABI mode.
+   */
+  immutables?: StateVariable[];
   /**
    * The bytecode of the contract that was created.
    */
@@ -504,4 +563,38 @@ export interface DecoderOptions {
   abiPointerBase?: number; //what relative pointers should be considered relative to
   memoryVisited?: number[]; //for circularity detection
   lengthOverride?: BN; //if present, causes the ABI decoder to use this length instead of reading it from the data
+}
+
+/**
+ * Used to indicate whether "extra" event decodings -- event decodings from
+ * non-library contracts other than the one that appears to have emitted
+ * the event -- should be returned.
+ *
+ * * `"off"`: Exclude extra decodings (the default).
+ * * `"on"`: Include extra decodings.
+ * * `"necessary"`: Include extra decodings only if there are no others.
+ *
+ * Extra decodings will always be returned after other decodings.
+ *
+ * @Category Inputs
+ */
+export type ExtrasAllowed = "off" | "on" | "necessary";
+
+/**
+ * The type of the options parameter to [[decodeEvent]].  This type will be expanded in the future
+ * as more filtering options are added.
+ *
+ * @Category Inputs
+ */
+export interface LogOptions {
+  /**
+   * If passed, restricts to events with the given name.
+   */
+  name?: string;
+  /**
+   * Used to indicate whether "extra" event decodings -- event decodings from
+   * non-library contracts other than the one that appears to have emitted
+   * the event -- should be returned.  Defaults to `"off"`.
+   */
+  extras?: ExtrasAllowed;
 }

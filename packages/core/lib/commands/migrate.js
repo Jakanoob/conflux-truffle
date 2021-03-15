@@ -7,7 +7,12 @@ const command = {
       default: false
     },
     "compile-all": {
-      describe: "recompile all contracts",
+      describe: "Recompile all contracts",
+      type: "boolean",
+      default: false
+    },
+    "compile-none": {
+      describe: "Do not compile contracts",
       type: "boolean",
       default: false
     },
@@ -44,9 +49,9 @@ const command = {
     usage:
       "truffle migrate [--reset] [--f <number>] [--to <number>] [--network <name>]\n" +
       "                                " + // spacing to align with previous line
-      "[--compile-all] [--verbose-rpc] [--interactive] [--dry-run]\n" +
+      "[--compile-all] [--compile-none] [--verbose-rpc] [--interactive]\n" +
       "                                " + // spacing to align with previous line
-      "[--skip-dry-run] [--describe-json]",
+      "[--skip-dry-run] [--describe-json] [--dry-run]",
     options: [
       {
         option: "--reset",
@@ -78,6 +83,10 @@ const command = {
           "be compiled."
       },
       {
+        option: "--compile-none",
+        description: "Do not compile any contracts before migrating."
+      },
+      {
         option: "--verbose-rpc",
         description:
           "Log communication between Truffle and the Ethereum client."
@@ -103,7 +112,7 @@ const command = {
     ]
   },
 
-  determineDryRunSettings: function(config, options) {
+  determineDryRunSettings: function (config, options) {
     // Source: ethereum.stackexchange.com/questions/17051
     const networkWhitelist = [
       1, // Mainnet (ETH & ETC)
@@ -139,14 +148,14 @@ const command = {
       networkWhitelist.includes(parseInt(config.network_id)) ||
       config.production;
     const dryRunAndMigrations = production && !skipDryRun;
-    return { dryRunOnly, dryRunAndMigrations };
+    return {dryRunOnly, dryRunAndMigrations};
   },
 
-  prepareConfigForRealMigrations: async function(buildDir, options) {
+  prepareConfigForRealMigrations: async function (buildDir, options) {
     const Artifactor = require("@truffle/artifactor");
     const Resolver = require("@truffle/resolver");
     const Migrate = require("@truffle/migrate");
-    const { Environment } = require("@truffle/environment");
+    const {Environment} = require("@truffle/environment");
     const Config = require("@truffle/config");
 
     let accept = true;
@@ -169,62 +178,63 @@ const command = {
       }
 
       config.dryRun = false;
-      return { config, proceed: true };
+      return {config, proceed: true};
     } else {
-      return { proceed: false };
+      return {proceed: false};
     }
   },
 
-  run: function(options, done) {
+  run: async function (options) {
     const Artifactor = require("@truffle/artifactor");
     const Resolver = require("@truffle/resolver");
     const Migrate = require("@truffle/migrate");
-    const Contracts = require("@truffle/workflow-compile");
-    const { Environment } = require("@truffle/environment");
+    const WorkflowCompile = require("@truffle/workflow-compile");
+    const {Environment} = require("@truffle/environment");
     const Config = require("@truffle/config");
-    const temp = require("temp").track();
-    const { promisify } = require("util");
+    const {promisify} = require("util");
     const promisifiedCopy = promisify(require("../copy"));
+    const tmp = require("tmp");
+    tmp.setGracefulCleanup();
 
     const conf = Config.detect(options);
+    if (conf.compileNone || conf["compile-none"]) {
+      conf.compiler = "none";
+    }
 
-    Contracts.compile(conf)
-      .then(async () => {
-        await Environment.detect(conf);
+    const result = await WorkflowCompile.compileAndSave(conf);
+    await WorkflowCompile.assignNames(conf, result);
+    await Environment.detect(conf);
 
-        const {
-          dryRunOnly,
-          dryRunAndMigrations
-        } = command.determineDryRunSettings(conf, options);
+    const {dryRunOnly, dryRunAndMigrations} = command.determineDryRunSettings(
+      conf,
+      options
+    );
 
-        if (dryRunOnly) {
-          conf.dryRun = true;
-          await setupDryRunEnvironmentThenRunMigrations(conf);
-        } else if (dryRunAndMigrations) {
-          const currentBuild = conf.contracts_build_directory;
-          conf.dryRun = true;
+    if (dryRunOnly) {
+      conf.dryRun = true;
+      await setupDryRunEnvironmentThenRunMigrations(conf);
+    } else if (dryRunAndMigrations) {
+      const currentBuild = conf.contracts_build_directory;
+      conf.dryRun = true;
 
-          await setupDryRunEnvironmentThenRunMigrations(conf);
+      await setupDryRunEnvironmentThenRunMigrations(conf);
 
-          let {
-            config,
-            proceed
-          } = await command.prepareConfigForRealMigrations(
-            currentBuild,
-            options
-          );
-          if (proceed) await runMigrations(config);
-        } else {
-          await runMigrations(conf);
-        }
-        done();
-      })
-      .catch(done);
+      let {config, proceed} = await command.prepareConfigForRealMigrations(
+        currentBuild,
+        options
+      );
+      if (proceed) await runMigrations(config);
+    } else {
+      await runMigrations(conf);
+    }
 
     async function setupDryRunEnvironmentThenRunMigrations(config) {
       await Environment.fork(config);
       // Copy artifacts to a temporary directory
-      const temporaryDirectory = temp.mkdirSync("migrate-dry-run-");
+      const temporaryDirectory = tmp.dirSync({
+        unsafeCleanup: true,
+        prefix: "migrate-dry-run-"
+      }).name;
 
       await promisifiedCopy(
         config.contracts_build_directory,
@@ -245,14 +255,15 @@ const command = {
       Migrate.launchReporter(config);
 
       if (options.f) {
-        await Migrate.runFrom(options.f, config);
+        return await Migrate.runFrom(options.f, config);
       } else {
         const needsMigrating = await Migrate.needsMigrating(config);
 
         if (needsMigrating) {
-          await Migrate.run(config);
+          return await Migrate.run(config);
         } else {
           config.logger.log("Network up to date.");
+          return;
         }
       }
     }

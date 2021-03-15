@@ -1,6 +1,6 @@
 const assert = require("chai").assert;
 const Box = require("@truffle/box");
-const Contracts = require("@truffle/workflow-compile");
+const WorkflowCompile = require("@truffle/workflow-compile");
 const Artifactor = require("@truffle/artifactor");
 const Resolver = require("@truffle/resolver");
 const MemoryStream = require("memorystream");
@@ -12,7 +12,7 @@ let config;
 let output = "";
 let memStream;
 
-describe("compile", function() {
+describe("compile", function () {
   before("Create a sandbox", async () => {
     config = await Box.sandbox("default");
     config.resolver = new Resolver(config);
@@ -26,100 +26,72 @@ describe("compile", function() {
       }
     };
     config.network = "default";
-    config.logger = { log: val => val && memStream.write(val) };
+    config.logger = {log: val => val && memStream.write(val)};
   });
 
-  after("Cleanup tmp files", function(done) {
-    glob("tmp-*", (err, files) => {
-      if (err) done(err);
-      files.forEach(file => fs.removeSync(file));
-      done();
-    });
+  after("Cleanup tmp files", async function () {
+    const files = glob.sync("tmp-*");
+    files.forEach(file => fs.removeSync(file));
   });
 
   afterEach("Clear MemoryStream", () => (output = ""));
 
-  it("compiles all initial contracts", function(done) {
-    this.timeout(10000);
-
-    Contracts.compile(
+  it("compiles all initial contracts", async function () {
+    const {contracts} = await WorkflowCompile.compileAndSave(
       config.with({
         all: false,
         quiet: true
-      }),
-      function(err, result) {
-        if (err) return done(err);
-        let { contracts } = result;
-
-        assert.equal(
-          Object.keys(contracts).length,
-          3,
-          "Didn't compile the expected number of contracts"
-        );
-        done();
-      }
+      })
+    );
+    assert.equal(
+      Object.keys(contracts).length,
+      3,
+      "Didn't compile the expected number of contracts"
     );
   });
 
-  it("compiles no contracts after no updates", function(done) {
-    this.timeout(10000);
-
-    Contracts.compile(
+  it("compiles no contracts after no updates", async function () {
+    const {contracts} = await WorkflowCompile.compileAndSave(
       config.with({
         all: false,
         quiet: true
-      }),
-      function(err, result) {
-        if (err) return done(err);
-        let { contracts } = result;
-
-        assert.equal(
-          Object.keys(contracts).length,
-          0,
-          "Compiled a contract even though we weren't expecting it"
-        );
-        done();
-      }
+      })
+    );
+    assert.equal(
+      Object.keys(contracts).length,
+      0,
+      "Compiled a contract even though we weren't expecting it"
     );
   });
 
-  it("compiles updated contract and its ancestors", function(done) {
-    this.timeout(10000);
-
-    var file_to_update = path.resolve(
+  it("compiles updated contract and its ancestors", async function () {
+    const fileToUpdate = path.resolve(
       path.join(config.contracts_directory, "ConvertLib.sol")
     );
-    var stat = fs.statSync(file_to_update);
+    const stat = fs.statSync(fileToUpdate);
 
     // Update the modification time to simulate an edit.
-    var newTime = new Date().getTime();
-    fs.utimesSync(file_to_update, newTime, newTime);
+    const newTime = new Date().getTime();
+    fs.utimesSync(fileToUpdate, newTime, newTime);
 
-    Contracts.compile(
+    const {contracts} = await WorkflowCompile.compileAndSave(
       config.with({
         all: false,
         quiet: true
-      }),
-      function(err, result) {
-        if (err) return done(err);
-        let { contracts } = result;
-
-        assert.equal(
-          Object.keys(contracts).length,
-          2,
-          "Expected MetaCoin and ConvertLib to be compiled"
-        );
-
-        // reset time
-        fs.utimesSync(file_to_update, stat.atime, stat.mtime);
-
-        done();
-      }
+      })
     );
+    assert.equal(
+      Object.keys(contracts).length,
+      2,
+      "Expected MetaCoin and ConvertLib to be compiled"
+    );
+
+    // reset time
+    fs.utimesSync(fileToUpdate, stat.atime, stat.mtime);
   });
 
-  it("compiling shouldn't create any network artifacts", function() {
-    var contract = config.resolver.require("MetaCoin.sol");
+  it("compiling shouldn't create any network artifacts", function () {
+    const contract = config.resolver.require("MetaCoin.sol");
     assert.equal(
       Object.keys(contract.networks).length,
       0,
@@ -127,100 +99,54 @@ describe("compile", function() {
     );
   });
 
-  describe("solc listing options", function() {
+  describe("solc listing options", function () {
     beforeEach(() => {
       memStream = new MemoryStream();
-      memStream.on("data", function(data) {
+      memStream.on("data", function (data) {
         output += data.toString();
       });
     });
 
-    it("prints a truncated list of solcjs versions", function(done) {
-      this.timeout(5000);
-
+    it("prints a truncated list of solcjs versions", async function () {
       const options = {
         list: ""
       };
 
-      command.run(config.with(options), err => {
-        if (err) return done(err);
-
-        memStream.on("end", function() {
-          const arr = JSON.parse(output);
-          assert(arr.length === 11);
-          done();
-        });
-
-        memStream.end("");
+      await command.run(config.with(options));
+      memStream.on("end", () => {
+        const arr = JSON.parse(output);
+        assert(arr.length === 11);
       });
+      memStream.end("");
     });
 
-    it("prints a list of docker tags", function(done) {
-      this.timeout(20000);
-
+    it("prints a list of docker tags", async function () {
       const options = {
         list: "docker"
       };
 
-      command.run(config.with(options), err => {
-        if (err) return done(err);
-
-        memStream.on("end", function() {
-          const arr = JSON.parse(output);
-          assert(arr.length === 11);
-          assert(typeof arr[0] === "string");
-          done();
-        });
-
-        memStream.end("");
+      await command.run(config.with(options));
+      memStream.on("end", () => {
+        const arr = JSON.parse(output);
+        assert(arr.length === 11);
+        assert(typeof arr[0] === "string");
       });
+      memStream.end("");
     });
 
-    it("prints a full list of releases when --all is set", function(done) {
-      this.timeout(5000);
-
+    it("prints a full list of releases when --all is set", async function () {
       const options = {
         list: "releases",
         all: true
       };
 
-      command.run(config.with(options), err => {
-        if (err) return done(err);
-
-        memStream.on("end", function() {
-          const arr = JSON.parse(output);
-          assert(arr.length > 11);
-          assert(typeof arr[0] === "string");
-          done();
-        });
-
-        memStream.end("");
+      await command.run(config.with(options));
+      memStream.on("end", () => {
+        const arr = JSON.parse(output);
+        assert(arr.length > 11);
+        assert(typeof arr[0] === "string");
       });
+      memStream.end("");
     });
   });
-
-  // TODO: Kept this as a comment because I'm confused if it applies.
-  // Since the binary and abi are updated with every compile, and they're not within
-  // the networks object anymore, it may not matter when that specific network changed.
-
-  // it('compiles all contracts after multiple changes after a change in network', function(done) {
-  //   this.timeout(10000);
-  //
-  //   config.network = "secondary";
-  //
-  //   Contracts.compile(config.with({
-  //     all: false,
-  //     quiet: true
-  //   }), function(err, contracts) {
-  //     if (err) return done(err);
-  //
-  //     assert.equal(Object.keys(contracts).length, 3, "Expected all contracts to be compiled on a second network");
-  //     done();
-  //   });
-  // });
-  //
-  // it('contracts should now have two networks', function() {
-  //   var contract = config.resolver.require("MetaCoin.sol");
-  //   assert.equal(contract.networks().length, 2, "Expected the contract to be managing two networks");
-  // });
-}).timeout(10000);
+});

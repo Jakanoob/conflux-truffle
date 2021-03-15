@@ -8,6 +8,13 @@ const VersionRange = require("./VersionRange");
 
 class Docker extends LoadingStrategy {
   async load() {
+    // Set a sensible limit for maxBuffer
+    // See https://github.com/nodejs/node/pull/23027
+    let maxBuffer = 1024 * 1024 * 100;
+    if (this.config.spawn && this.config.spawn.maxBuffer) {
+      maxBuffer = this.config.spawn.maxBuffer;
+    }
+
     const versionString = await this.validateAndGetSolcVersion();
     const command =
       "docker run --rm -i ethereum/solc:" +
@@ -16,7 +23,8 @@ class Docker extends LoadingStrategy {
 
     try {
       return {
-        compile: options => String(execSync(command, { input: options })),
+        compile: options =>
+          String(execSync(command, { input: options, maxBuffer })),
         version: () => versionString
       };
     } catch (error) {

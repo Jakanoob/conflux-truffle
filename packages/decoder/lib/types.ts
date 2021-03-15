@@ -6,10 +6,15 @@ import {
   Ast,
   Compilations,
   Contexts,
-  CalldataDecoding,
-  LogDecoding
+  LogDecoding,
+  StateVariable,
+  ExtrasAllowed
 } from "@truffle/codec";
 import Web3 from "web3";
+
+//StateVariable used to be defined here, so let's continue
+//to export it
+export { StateVariable, ExtrasAllowed };
 
 /**
  * This type represents information about a Truffle project that can be used to
@@ -72,27 +77,6 @@ export interface ContractState {
 }
 
 /**
- * This type represents one of the decoded contract's state variables.
- * @category Results
- */
-export interface StateVariable {
-  /**
-   * The name of the variable.  Note that due to inheritance, this may not be unique.
-   */
-  name: string;
-  /**
-   * The class of the contract that defined the variable, as a Format.Types.ContractType.
-   * Note that this class may differ from that of the contract being decoded, due
-   * to inheritance.
-   */
-  class: Format.Types.ContractType;
-  /**
-   * The decoded value of the variable.  Note this is a Format.Values.Result, so it may be an error.
-   */
-  value: Format.Values.Result;
-}
-
-/**
  * This type represents a web3 Log object that has been decoded.
  * Note that it extends the Log type and just adds an additional field
  * with the decoding.
@@ -131,8 +115,8 @@ export interface ContractAndContexts {
   compilationId: string;
   contract: Compilations.Contract;
   node: Ast.AstNode;
-  deployedContext?: Contexts.DecoderContext;
-  constructorContext?: Contexts.DecoderContext;
+  deployedContext?: Contexts.Context;
+  constructorContext?: Contexts.Context;
 }
 
 export interface ContractInfo {
@@ -171,6 +155,26 @@ export interface EventOptions {
    * address as undefined.
    */
   address?: string;
+  /**
+   * Used to indicate whether "extra" event decodings -- event decodings from
+   * non-library contracts other than the one that appears to have emitted
+   * the event -- should be returned.  Defaults to `"off"`.
+   */
+  extras?: ExtrasAllowed;
+}
+
+/**
+ * The type of the options parameter to [[WireDecoder.decodeLog|decodeLog()]].
+ * This type may be expanded in the future.
+ * @category Inputs
+ */
+export interface DecodeLogOptions {
+  /**
+   * Used to indicate whether "extra" event decodings -- event decodings from
+   * non-library contracts other than the one that appears to have emitted
+   * the event -- should be returned.  Defaults to `"off"`.
+   */
+  extras?: ExtrasAllowed;
 }
 
 /**

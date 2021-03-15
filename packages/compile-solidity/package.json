@@ -1,55 +1,61 @@
 {
   "name": "@truffle/compile-solidity",
   "description": "Compiler helper and artifact manager for Solidity files",
-  "version": "4.3.8",
+  "license": "MIT",
+  "author": "Tim Coulter <tim@trufflesuite.com>",
+  "homepage": "https://github.com/trufflesuite/compile-solidity#readme",
+  "repository": "https://github.com/trufflesuite/truffle/tree/master/packages/compile-solidity",
+  "bugs": {
+    "url": "https://github.com/trufflesuite/truffle/issues"
+  },
+  "version": "5.2.0",
   "main": "index.js",
+  "scripts": {
+    "prepare": "exit 0",
+    "test": "./scripts/test.sh"
+  },
   "dependencies": {
-    "@truffle/config": "^1.2.19",
-    "@truffle/contract-sources": "^0.1.7",
-    "@truffle/error": "^0.0.8",
-    "@truffle/expect": "^0.0.13",
-    "colors": "^1.1.2",
-    "debug": "^4.1.0",
-    "fs-extra": "^8.1.0",
+    "@truffle/compile-common": "^0.7.0",
+    "@truffle/config": "^1.2.35",
+    "@truffle/contract-sources": "^0.1.11",
+    "@truffle/expect": "^0.0.15",
+    "debug": "^4.3.1",
+    "fs-extra": "^9.1.0",
+    "lodash.clonedeep": "^4.5.0",
     "ora": "^3.4.0",
     "original-require": "^1.0.1",
     "request": "^2.85.0",
     "request-promise": "^4.2.2",
     "require-from-string": "^2.0.2",
-    "semver": "^5.6.0",
+    "semver": "^7.3.4",
     "solc": "^0.6.0"
   },
   "devDependencies": {
-    "@truffle/resolver": "^6.0.4",
+    "@truffle/artifactor": "^4.0.97",
+    "@truffle/box": "^2.1.6",
+    "@truffle/resolver": "^7.0.3",
     "babel-core": "^6.26.0",
     "babel-polyfill": "^6.26.0",
     "babel-preset-env": "^1.6.1",
-    "mocha": "5.2.0",
-    "sinon": "^7.2.2",
-    "tmp": "0.0.33"
+    "chai": "^4.2.0",
+    "glob": "^7.1.6",
+    "mocha": "8.1.2",
+    "sinon": "^9.0.2",
+    "tmp": "^0.2.1"
+  },
+  "keywords": [
+    "compile",
+    "ethereum",
+    "solidity",
+    "truffle"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "babel": {
     "presets": [
       "env"
     ]
   },
-  "scripts": {
-    "test": "./scripts/test.sh"
-  },
-  "repository": "https://github.com/trufflesuite/truffle/tree/master/packages/compile-solidity",
-  "keywords": [
-    "ethereum",
-    "truffle",
-    "compile",
-    "solidity"
-  ],
-  "author": "Tim Coulter <tim@trufflesuite.com>",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/trufflesuite/truffle/issues"
-  },
-  "homepage": "https://github.com/trufflesuite/compile-solidity#readme",
-  "publishConfig": {
-    "access": "public"
-  }
+  "gitHead": "6b84be7849142588ef2e3224d8a9d7c2ceeb6e4a"
 }

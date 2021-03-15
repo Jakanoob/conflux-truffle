@@ -18,8 +18,8 @@ const command = {
         option: "<artifact_type>",
         description:
           "Create a new artifact where artifact_type is one of the following: " +
-          "contract, migration\n                    or test. The new artifact is created " +
-          "along with one of the following files:\n                    `contracts/ArtifactName.sol`, " +
+          "contract, migration,\n                    test or all. The new artifact is created " +
+          "along with one (or all) of the following\n                    files: `contracts/ArtifactName.sol`, " +
           "`migrations/####_artifact_name.js` or\n                    `tests/artifact_name.js`. (required)"
       },
       {
@@ -28,7 +28,7 @@ const command = {
       }
     ]
   },
-  run: function(options, done) {
+  run: async function (options) {
     const Config = require("@truffle/config");
     const ConfigurationError = require("../../errors/configurationerror");
     const create = require("./helpers");
@@ -48,35 +48,24 @@ const command = {
     }
 
     if (type == null) {
-      return done(
-        new ConfigurationError(
-          "Please specify the type of item to create. Example: truffle create contract MyContract"
-        )
+      throw new ConfigurationError(
+        "Please specify the type of item to create. Example: truffle create contract MyContract"
       );
     }
 
     if (name == null) {
-      return done(
-        new ConfigurationError(
-          "Please specify the name of item to create. Example: truffle create contract MyContract"
-        )
+      throw new ConfigurationError(
+        "Please specify the name of item to create. Example: truffle create contract MyContract"
       );
     }
 
     if (!/^[a-zA-Z_$][a-zA-Z_$0-9]*$/.test(name)) {
-      return done(
-        new ConfigurationError(
-          "The name " +
-            name +
-            " is invalid. Please enter a valid name using alpha-numeric characters."
-        )
+      throw new ConfigurationError(
+        `The name ${name} is invalid. Please enter a valid name using alpha-numeric characters.`
       );
     }
 
     const fn = create[type];
-
-    if (fn == null)
-      return done(new ConfigurationError("Cannot find creation type: " + type));
 
     const destinations = {
       contract: config.contracts_directory,
@@ -84,7 +73,16 @@ const command = {
       test: config.test_directory
     };
 
-    create[type](destinations[type], name, options, done);
+    if (type === "all") {
+      for (const key of Object.keys(destinations)) {
+        await create[key](destinations[key], name, options);
+      }
+      return;
+    } else if (fn == null) {
+      throw new ConfigurationError(`Cannot find creation type: ${type}`);
+    } else {
+      return await create[type](destinations[type], name, options);
+    }
   }
 };
 

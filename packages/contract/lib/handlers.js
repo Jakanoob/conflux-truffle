@@ -44,7 +44,11 @@ const handlers = {
   setup: function(emitter, context) {
     emitter.on("error", handlers.error.bind(emitter, context));
     emitter.on("transactionHash", handlers.hash.bind(emitter, context));
-    emitter.on("confirmation", handlers.confirmation.bind(emitter, context));
+    // web3 block polls if the confirmation listener is enabled so we want to
+    // give users a way of opting out of this behavior - it causes problems in testing
+    if (!context.contract.disableConfirmationListener) {
+      emitter.on("confirmation", handlers.confirmation.bind(emitter, context));
+    }
     emitter.on("receipt", handlers.receipt.bind(emitter, context));
   },
 
@@ -138,7 +142,11 @@ const handlers = {
       logs: receipt.logs
     });
 
-    this.removeListener("receipt", handlers.receipt);
+    //HACK: adding this conditional for when the handler is invoked
+    //manually during stacktracing
+    if (this.removeListener) {
+      this.removeListener("receipt", handlers.receipt);
+    }
   }
 };
 

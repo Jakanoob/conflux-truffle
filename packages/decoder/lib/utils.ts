@@ -5,11 +5,12 @@ import Web3 from "web3";
 import BN from "bn.js";
 
 import * as Codec from "@truffle/codec";
+import * as Abi from "@truffle/abi-utils";
 
 import * as Types from "./types";
 
 //sorry for the untyped import, but...
-const { shimBytecode } = require("@truffle/compile-solidity/legacy/shims");
+const { Shims } = require("@truffle/compile-common");
 
 //NOTE: Definitely do not use this in real code!  For tests only!
 //for convenience: invokes the nativize method on all the given variables, and changes them to
@@ -34,12 +35,12 @@ export function makeContext(
   node: Codec.Ast.AstNode | undefined,
   compilation: Codec.Compilations.Compilation,
   isConstructor = false
-): Codec.Contexts.DecoderContext {
-  const abi = Codec.AbiData.Utils.schemaAbiToAbi(contract.abi);
+): Codec.Contexts.Context {
+  const abi = Abi.normalize(contract.abi);
   const bytecode = isConstructor
     ? contract.bytecode
     : contract.deployedBytecode;
-  const binary: string = shimBytecode(bytecode);
+  const binary: string = Shims.NewToLegacy.forBytecode(bytecode);
   const hash = Codec.Conversion.toHexString(
     Codec.Evm.Utils.keccak256({
       type: "string",
@@ -48,18 +49,16 @@ export function makeContext(
   );
   debug("hash: %s", hash);
   const fallback =
-    <Codec.AbiData.FallbackAbiEntry>(
-      abi.find(abiEntry => abiEntry.type === "fallback")
-    ) || null; //TS is failing at inference here
+    <Abi.FallbackEntry>abi.find(abiEntry => abiEntry.type === "fallback") ||
+    null; //TS is failing at inference here
   const receive =
-    <Codec.AbiData.ReceiveAbiEntry>(
-      abi.find(abiEntry => abiEntry.type === "receive")
-    ) || null; //and here
+    <Abi.ReceiveEntry>abi.find(abiEntry => abiEntry.type === "receive") || null; //and here
   return {
     context: hash,
     contractName: contract.contractName,
     binary,
     contractId: node ? node.id : undefined,
+    linearizedBaseContracts: node ? node.linearizedBaseContracts : undefined,
     contractKind: contractKind(contract, node),
     immutableReferences: isConstructor
       ? undefined
@@ -90,7 +89,9 @@ function contractKind(
   //PUSH20 followed by 20 0s, in which case we'll assume it's a library
   //(note: this will fail to detect libraries from before Solidity 0.4.20)
   if (contract.deployedBytecode) {
-    const deployedBytecode = shimBytecode(contract.deployedBytecode);
+    const deployedBytecode = Shims.NewToLegacy.forBytecode(
+      contract.deployedBytecode
+    );
     const pushAddressInstruction = (
       0x60 +
       Codec.Evm.Utils.ADDRESS_SIZE -

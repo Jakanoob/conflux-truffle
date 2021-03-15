@@ -1,9 +1,17 @@
 import debugModule from "debug";
 const debug = debugModule("source-fetcher:etherscan");
+// untyped import since no @types/web3-utils exists
+const Web3Utils = require("web3-utils");
 
 import { Fetcher, FetcherConstructor } from "./types";
 import * as Types from "./types";
-import { networksById, makeFilename, makeTimer } from "./common";
+import {
+  networksById,
+  makeFilename,
+  makeTimer,
+  removeLibraries,
+  InvalidNetworkError
+} from "./common";
 import request from "request-promise-native";
 
 //this looks awkward but the TS docs actually suggest this :P
@@ -40,11 +48,9 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
       "goerli"
     ];
     if (networkName === undefined || !supportedNetworks.includes(networkName)) {
-      this.validNetwork = false;
-    } else {
-      this.validNetwork = true;
-      this.suffix = networkName === "mainnet" ? "" : `-${networkName}`;
+      throw new InvalidNetworkError(networkId, "etherscan");
     }
+    this.suffix = networkName === "mainnet" ? "" : `-${networkName}`;
     debug("apiKey: %s", apiKey);
     this.apiKey = apiKey;
     const baseDelay = this.apiKey ? 200 : 3000; //etherscan permits 5 requests/sec w/a key, 1/3sec w/o
@@ -53,12 +59,7 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
     this.ready = makeTimer(0); //at start, it's ready to go immediately
   }
 
-  private validNetwork: boolean;
-  private suffix: string;
-
-  async isNetworkValid(): Promise<boolean> {
-    return this.validNetwork;
-  }
+  private readonly suffix: string;
 
   async fetchSourcesForAddress(
     address: string
@@ -76,7 +77,6 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
       await this.ready;
       const responsePromise = this.makeRequest(address);
       this.ready = makeTimer(this.delay);
-      //for now, we're just going to retry once if it fails
       try {
         return await responsePromise;
       } catch (error) {
@@ -119,15 +119,8 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
       return null;
     }
     //case 2: it's a Vyper contract
-    if (result.CompilerVersion.startsWith("vyper")) {
-      //return nothing useful, just something saying it's
-      //vyper so we can't do anything
-      return {
-        sources: {}, //not even going to bother processing the single source
-        options: {
-          language: "Vyper"
-        }
-      };
+    if (result.CompilerVersion.startsWith("vyper:")) {
+      return this.processVyperResult(result);
     }
     let multifileJson: Types.SolcSources;
     try {
@@ -169,13 +162,18 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
   ): Types.SourceInfo {
     const filename = makeFilename(result.ContractName);
     return {
+      contractName: result.ContractName,
       sources: {
         [filename]: result.SourceCode
       },
       options: {
         language: "Solidity",
         version: result.CompilerVersion,
-        settings: this.extractSettings(result)
+        settings: this.extractSettings(result),
+        specializations: {
+          libraries: this.processLibraries(result.Library),
+          constructorArguments: result.ConstructorArguments
+        }
       }
     };
   }
@@ -185,11 +183,16 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
     sources: Types.SolcSources
   ): Types.SourceInfo {
     return {
+      contractName: result.ContractName,
       sources: this.processSources(sources),
       options: {
         language: "Solidity",
         version: result.CompilerVersion,
-        settings: this.extractSettings(result)
+        settings: this.extractSettings(result),
+        specializations: {
+          libraries: this.processLibraries(result.Library),
+          constructorArguments: result.ConstructorArguments
+        }
       }
     };
   }
@@ -199,11 +202,34 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
     jsonInput: Types.SolcInput
   ): Types.SourceInfo {
     return {
+      contractName: result.ContractName,
       sources: this.processSources(jsonInput.sources),
       options: {
-        language: "Solidity",
+        language: jsonInput.language,
         version: result.CompilerVersion,
-        settings: this.removeLibraries(jsonInput.settings)
+        settings: removeLibraries(jsonInput.settings), //we *don't* want to pass library info!  unlinked bytecode is better!
+        specializations: {
+          libraries: jsonInput.settings.libraries,
+          constructorArguments: result.ConstructorArguments
+        }
+      }
+    };
+  }
+
+  private static processVyperResult(result: EtherscanResult): Types.SourceInfo {
+    const filename = makeFilename(result.ContractName, ".vy");
+    //note: this means filename will always be Vyper_contract.vy
+    return {
+      sources: {
+        [filename]: result.SourceCode
+      },
+      options: {
+        language: "Vyper",
+        version: result.CompilerVersion.replace(/^vyper:/, ""),
+        settings: this.extractVyperSettings(result),
+        specializations: {
+          constructorArguments: result.ConstructorArguments
+        }
       }
     };
   }
@@ -239,13 +265,34 @@ const EtherscanFetcher: FetcherConstructor = class EtherscanFetcher
     }
   }
 
-  //we *don't* want to pass library info!  unlinked bytecode is better!
-  private static removeLibraries(
-    settings: Types.SolcSettings
-  ): Types.SolcSettings {
-    let copySettings: Types.SolcSettings = { ...settings };
-    delete copySettings.libraries;
-    return copySettings;
+  private static processLibraries(
+    librariesString: string
+  ): Types.LibrarySettings {
+    let libraries: Types.Libraries;
+    if (librariesString === "") {
+      libraries = {};
+    } else {
+      libraries = Object.assign(
+        {},
+        ...librariesString.split(";").map(pair => {
+          const [name, address] = pair.split(":");
+          return { [name]: Web3Utils.toChecksumAddress(address) };
+        })
+      );
+    }
+    return { "": libraries }; //empty string as key means it applies to all contracts
+  }
+
+  private static extractVyperSettings(
+    result: EtherscanResult
+  ): Types.VyperSettings {
+    const evmVersion: string =
+      result.EVMVersion === "Default" ? undefined : result.EVMVersion;
+    if (evmVersion !== undefined) {
+      return { evmVersion };
+    } else {
+      return {};
+    }
   }
 };
 
@@ -272,9 +319,9 @@ interface EtherscanResult {
   CompilerVersion: string;
   OptimizationUsed: string; //really: a number used as a boolean
   Runs: string; //really: a number
-  ConstructorArguments: string; //ignored
+  ConstructorArguments: string; //encoded as hex string, no 0x in front
   EVMVersion: string;
-  Library: string; //represents an object but not in JSON (we'll actually ignore this)
+  Library: string; //semicolon-delimited list of colon-delimited name-address pairs (addresses lack 0x in front)
   LicenseType: string; //ignored
   Proxy: string; //no clue what this is [ignored]
   Implementation: string; //or this [ignored]

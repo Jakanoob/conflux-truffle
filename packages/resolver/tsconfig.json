@@ -3,7 +3,7 @@
     "module": "commonjs",
     "esModuleInterop": true,
     "declaration": true,
-    "target": "es6",
+    "target": "es2016",
     "noImplicitAny": true,
     "moduleResolution": "node",
     "sourceMap": true,
@@ -20,6 +20,7 @@
   },
   "include": [
     "./lib/**/*.ts",
-    "./test/**/*.ts"
+    "./test/**/*.ts",
+    "./typings/**/*.d.ts"
   ]
 }

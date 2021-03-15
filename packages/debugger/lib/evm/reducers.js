@@ -31,7 +31,7 @@ function contexts(state = DEFAULT_CONTEXTS, action) {
         contractId,
         contractKind,
         isConstructor,
-        externalSolidity
+        linearizedBaseContracts
       } = action;
       debug("action %O", action);
 
@@ -53,7 +53,7 @@ function contexts(state = DEFAULT_CONTEXTS, action) {
             contractId,
             contractKind,
             isConstructor,
-            externalSolidity,
+            linearizedBaseContracts,
             payable: Codec.AbiData.Utils.abiHasPayableFallback(abi)
           }
         }
@@ -93,7 +93,8 @@ const DEFAULT_BLOCK = {
   difficulty: new BN(0),
   gaslimit: new BN(0),
   number: new BN(0),
-  timestamp: new BN(0)
+  timestamp: new BN(0),
+  chainid: new BN(0)
 };
 
 function block(state = DEFAULT_BLOCK, action) {
@@ -142,10 +143,42 @@ function initialCall(state = null, action) {
   }
 }
 
+const DEFAULT_AFFECTED_INSTANCES = { byAddress: {} };
+
+function affectedInstances(state = DEFAULT_AFFECTED_INSTANCES, action) {
+  switch (action.type) {
+    case actions.ADD_AFFECTED_INSTANCE:
+      const {
+        address,
+        binary,
+        context,
+        creationBinary,
+        creationContext
+      } = action;
+      return {
+        byAddress: {
+          ...state.byAddress,
+          [address]: {
+            address,
+            binary,
+            context,
+            creationBinary, //may be undefined
+            creationContext
+          }
+        }
+      };
+    case actions.UNLOAD_TRANSACTION:
+      return DEFAULT_AFFECTED_INSTANCES;
+    default:
+      return state;
+  }
+}
+
 const transaction = combineReducers({
   globals,
   status,
-  initialCall
+  initialCall,
+  affectedInstances
 });
 
 function callstack(state = [], action) {

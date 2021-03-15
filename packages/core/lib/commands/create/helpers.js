@@ -1,6 +1,7 @@
 const copy = require("../../copy");
 const path = require("path");
 const fs = require("fs");
+const { promisify } = require("util");
 
 const templates = {
   test: {
@@ -10,6 +11,7 @@ const templates = {
   contract: {
     filename: path.join(__dirname, "templates", "Example.sol"),
     name: "Example",
+    license: "MIT",
     variable: "example"
   },
   migration: {
@@ -17,33 +19,17 @@ const templates = {
   }
 };
 
-var processFile = function(file_path, processfn, callback) {
-  fs.readFile(file_path, { encoding: "utf8" }, function(err, data) {
-    if (err != null) {
-      callback(err);
-      return;
-    }
-
-    var result = processfn(data);
-    fs.writeFile(file_path, result, { encoding: "utf8" }, callback);
-  });
+const replaceContents = (filePath, find, replacement) => {
+  const data = fs.readFileSync(filePath, { encoding: "utf8" });
+  if (typeof find === "string") {
+    find = new RegExp(find, "g");
+  }
+  const result = data.replace(find, replacement);
+  fs.writeFileSync(filePath, result, { encoding: "utf8" });
 };
 
-var replaceContents = function(file_path, find, replacement, callback) {
-  processFile(
-    file_path,
-    function(data) {
-      if (typeof find === "string") {
-        find = new RegExp(find, "g");
-      }
-      return data.replace(find, replacement);
-    },
-    callback
-  );
-};
-
-var toUnderscoreFromCamel = function(string) {
-  string = string.replace(/([A-Z])/g, function($1) {
+const toUnderscoreFromCamel = (string) => {
+  string = string.replace(/([A-Z])/g, function ($1) {
     return "_" + $1.toLowerCase();
   });
 
@@ -54,78 +40,71 @@ var toUnderscoreFromCamel = function(string) {
   return string;
 };
 
-var Create = {
-  contract: function(directory, name, options, callback) {
-    if (typeof options === "function") {
-      callback = options;
+// getLicense return the license property value from Truffle config first and
+// in case that the file doesn't exist it will fallback to package.json
+const getLicense = (options) => {
+  try {
+    if ((license = require("@truffle/config").detect(options).license)) {
+      return license;
     }
+  } catch (err) {
+    console.log(err);
+  }
 
-    var from = templates.contract.filename;
-    var to = path.join(directory, name + ".sol");
+  try {
+    return require(path.join(process.cwd(), "package.json")).license;
+  } catch {}
+}
+
+const Create = {
+  contract: async function (directory, name, options) {
+    const from = templates.contract.filename;
+    const to = path.join(directory, name + ".sol");
 
     if (!options.force && fs.existsSync(to)) {
-      return callback(
-        new Error("Can not create " + name + ".sol: file exists")
-      );
+      throw new Error("Can not create " + name + ".sol: file exists");
     }
 
-    copy.file(from, to, function(err) {
-      if (err) return callback(err);
+    await promisify(copy.file.bind(copy))(from, to);
 
-      replaceContents(to, templates.contract.name, name, callback);
-    });
+    replaceContents(to, templates.contract.name, name);
+    if ((license = getLicense(options))) {
+      replaceContents(to, templates.contract.license, license);
+    }
   },
 
-  test: function(directory, name, options, callback) {
-    if (typeof options === "function") {
-      callback = options;
-    }
-
-    var underscored = toUnderscoreFromCamel(name);
+  test: async function (directory, name, options) {
+    let underscored = toUnderscoreFromCamel(name);
     underscored = underscored.replace(/\./g, "_");
-    var from = templates.test.filename;
-    var to = path.join(directory, underscored + ".js");
+    const from = templates.test.filename;
+    const to = path.join(directory, underscored + ".js");
 
     if (!options.force && fs.existsSync(to)) {
-      return callback(
-        new Error("Can not create " + underscored + ".js: file exists")
-      );
+      throw new Error("Can not create " + underscored + ".js: file exists");
     }
 
-    copy.file(from, to, function(err) {
-      if (err) return callback(err);
-
-      replaceContents(to, templates.contract.name, name, function(err) {
-        if (err) return callback(err);
-        replaceContents(to, templates.contract.variable, underscored, callback);
-      });
-    });
+    await promisify(copy.file.bind(copy))(from, to);
+    replaceContents(to, templates.contract.name, name);
+    replaceContents(to, templates.contract.variable, underscored);
   },
 
-  migration: function(directory, name, options, callback) {
-    if (typeof options === "function") {
-      callback = options;
-    }
-
-    var underscored = toUnderscoreFromCamel(name || "");
+  migration: async function (directory, name, options) {
+    let underscored = toUnderscoreFromCamel(name || "");
     underscored = underscored.replace(/\./g, "_");
-    var from = templates.migration.filename;
-    var filename = (new Date().getTime() / 1000) | 0; // Only do seconds.
+    const from = templates.migration.filename;
+    let filename = (new Date().getTime() / 1000) | 0; // Only do seconds.
 
     if (name != null && name !== "") {
       filename += "_" + underscored;
     }
 
     filename += ".js";
-    var to = path.join(directory, filename);
+    const to = path.join(directory, filename);
 
     if (!options.force && fs.existsSync(to)) {
-      return callback(
-        new Error("Can not create " + filename + ": file exists")
-      );
+      throw new Error("Can not create " + filename + ": file exists");
     }
-
-    copy.file(from, to, callback);
+    return await promisify(copy.file.bind(copy))(from, to);
   }
 };
 

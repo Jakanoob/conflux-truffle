@@ -12,6 +12,7 @@ import * as stacktrace from "lib/stacktrace/sagas";
 import * as evm from "lib/evm/sagas";
 import * as trace from "lib/trace/sagas";
 import * as data from "lib/data/sagas";
+import * as txlog from "lib/txlog/sagas";
 import * as web3 from "lib/web3/sagas";
 
 import * as actions from "../actions";
@@ -107,8 +108,11 @@ function* startFullMode() {
     //better not start this twice!
     return;
   }
-  debug("turning on data listener");
-  yield fork(data.saga);
+  debug("turning on data & txlog listeners");
+  const listenersToActivate = [data.saga, txlog.saga];
+  for (let listener of listenersToActivate) {
+    yield fork(listener);
+  }
 
   debug("visiting ASTs");
   // visit asts
@@ -118,7 +122,10 @@ function* startFullMode() {
   debug("saving allocation table");
   yield* data.recordAllocations();
 
-  yield* trace.addSubmoduleToCount();
+  yield* trace.addSubmoduleToCount(listenersToActivate.length);
+
+  //begin any full-mode modules that need beginning
+  yield* txlog.begin();
 
   yield put(actions.setFullMode());
 }
@@ -141,6 +148,7 @@ function* forkListeners(moduleOptions) {
   let mainApps = [evm, solidity, stacktrace];
   if (!moduleOptions.lightMode) {
     mainApps.push(data);
+    mainApps.push(txlog);
   }
   let otherApps = [trace, controller, web3];
   const submoduleCount = mainApps.length;
@@ -159,33 +167,46 @@ function* fetchTx(txHash) {
 
   //get addresses created/called during transaction
   debug("processing trace for addresses");
-  let addresses = yield* trace.processTrace(result.trace);
+  let { calls, creations, selfdestructs } = yield* trace.processTrace(
+    result.trace
+  );
   //add in the address of the call itself (if a call)
-  if (result.address && !addresses.includes(result.address)) {
-    addresses.push(result.address);
+  if (result.address && !calls.includes(result.address)) {
+    calls.push(result.address);
   }
+
   //if a create, only add in address if it was successful
-  if (
-    result.binary &&
-    result.status &&
-    !addresses.includes(result.storageAddress)
-  ) {
-    addresses.push(result.storageAddress);
+  if (result.binary && result.status && !(result.storageAddress in creations)) {
+    creations[result.storageAddress] = result.binary;
   }
 
   let blockNumber = result.block.number.toString(); //a BN is not accepted
+  let addresses = [...calls, ...selfdestructs, ...Object.keys(creations)];
+  let nonCallStartIndex = calls.length;
   debug("obtaining binaries");
   let binaries = yield* web3.obtainBinaries(addresses, blockNumber);
 
   debug("recording instances");
   yield all(
-    addresses.map((address, i) => call(recordInstance, address, binaries[i]))
+    addresses.map((address, index) =>
+      call(
+        recordInstance,
+        address,
+        binaries[index],
+        index >= nonCallStartIndex,
+        creations[address] //may be undefined
+      )
+    )
   );
 
   debug("sending initial call");
-  yield* evm.begin(result); //note: this must occur *before* the other two
+  yield* evm.begin(result); //note: this must occur *before* the other ones!
   yield* solidity.begin();
   yield* stacktrace.begin();
+  if (!(yield select(session.status.lightMode))) {
+    //full-mode-only modules
+    yield* txlog.begin();
+  }
 }
 
 function* recordContexts(contexts) {
@@ -198,8 +219,18 @@ function* recordSources(sources) {
   yield* solidity.addSources(sources);
 }
 
-function* recordInstance(address, binary) {
-  yield* evm.addInstance(address, binary);
+//creationBinary can be omitted; should only be used for creations
+function* recordInstance(
+  address,
+  binary,
+  affectedInstanceOnly,
+  creationBinary
+) {
+  yield* evm.addAffectedInstance(address, binary, creationBinary);
+  if (!affectedInstanceOnly) {
+    //add it as a real codex instance
+    yield* evm.addInstance(address, binary);
+  }
 }
 
 function* ready() {
@@ -218,6 +249,7 @@ export function* unload() {
   yield* evm.unload();
   yield* trace.unload();
   yield* stacktrace.unload();
+  yield* txlog.unload();
   yield put(actions.unloadTransaction());
 }
 

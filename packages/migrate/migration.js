@@ -1,3 +1,4 @@
+const debug = require("debug")("migrate:Migration");
 const path = require("path");
 const Deployer = require("@truffle/deployer");
 const Require = require("@truffle/require");
@@ -7,7 +8,12 @@ const {
   createInterfaceAdapter
 } = require("@truffle/interface-adapter");
 
-const ResolverIntercept = require("./resolverintercept");
+let Db;
+try {
+  Db = require("@truffle/db");
+} catch {}
+
+const ResolverIntercept = require("./ResolverIntercept");
 
 class Migration {
   constructor(file, reporter, config) {
@@ -45,9 +51,7 @@ class Migration {
     const unRunnable = !fn || !fn.length || fn.length == 0;
 
     if (unRunnable) {
-      const msg = `Migration ${
-        this.file
-      } invalid or does not take any parameters`;
+      const msg = `Migration ${this.file} invalid or does not take any parameters`;
       throw new Error(msg);
     }
 
@@ -78,8 +82,14 @@ class Migration {
       // Migrate without saving
       if (options.save === false) return;
 
-      // Write migrations record to chain
-      const Migrations = resolver.require("Migrations");
+      let Migrations;
+
+      // Attempt to write migrations record to chain
+      try {
+        Migrations = resolver.require("Migrations");
+      } catch (error) {
+        // do nothing, Migrations contract optional
+      }
 
       if (Migrations && Migrations.isDeployed()) {
         const message = `Saving migration to chain.`;
@@ -100,8 +110,43 @@ class Migration {
 
       await this.emitter.emit("postMigrate", this.isLast);
 
+      let artifacts = resolver
+        .contracts()
+        .map(abstraction => abstraction._json);
+      if (
+        Db &&
+        this.config.db &&
+        this.config.db.enabled &&
+        artifacts.length > 0
+      ) {
+        const db = Db.connect(this.config.db);
+        const project = await Db.Project.initialize({
+          db,
+          project: {
+            directory: this.config.working_directory
+          }
+        });
+
+        const result = await project
+          .connect({ provider: this.config.provider })
+          .loadMigrate({
+            network: {
+              name: this.config.network
+            },
+            artifacts
+          });
+
+        ({ artifacts } = result);
+
+        await project.assignNames({
+          assignments: {
+            networks: [result.network]
+          }
+        });
+      }
+
       // Save artifacts to local filesystem
-      await options.artifactor.saveAll(resolver.contracts());
+      await options.artifactor.saveAll(artifacts);
 
       deployer.finish();
 

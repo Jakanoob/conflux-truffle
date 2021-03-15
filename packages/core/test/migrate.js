@@ -1,7 +1,7 @@
 var assert = require("chai").assert;
 var Box = require("@truffle/box");
 var Migrate = require("@truffle/migrate");
-var Contracts = require("@truffle/workflow-compile");
+var WorkflowCompile = require("@truffle/workflow-compile");
 var Networks = require("../lib/networks");
 var path = require("path");
 var fs = require("fs-extra");
@@ -11,10 +11,10 @@ var Resolver = require("@truffle/resolver");
 var Artifactor = require("@truffle/artifactor");
 var Web3 = require("web3");
 
-describe("migrate", function() {
+describe("migrate", function () {
   var config;
 
-  before("Create a sandbox", async () => {
+  before("Create a sandbox", async function () {
     config = await Box.sandbox("default");
     config.resolver = new Resolver(config);
     config.artifactor = new Artifactor(config.contracts_build_directory);
@@ -35,15 +35,15 @@ describe("migrate", function() {
     });
   }
 
-  before("Get accounts and network id of network one", function() {
+  before("Get accounts and network id of network one", function () {
     return createProviderAndSetNetworkConfig("primary");
   });
 
-  before("Get accounts and network id of network one", function() {
+  before("Get accounts and network id of network one", function () {
     return createProviderAndSetNetworkConfig("secondary");
   });
 
-  after("Cleanup tmp files", function(done) {
+  after("Cleanup tmp files", function (done) {
     glob("tmp-*", (err, files) => {
       if (err) done(err);
       files.forEach(file => fs.removeSync(file));
@@ -51,7 +51,7 @@ describe("migrate", function() {
     });
   });
 
-  it("profiles a new project as not having any contracts deployed", async () => {
+  it("profiles a new project as not having any contracts deployed", async function() {
     const networks = await Networks.deployed(config);
     assert.equal(
       Object.keys(networks).length,
@@ -70,12 +70,14 @@ describe("migrate", function() {
     );
   });
 
-  it("links libraries in initial project, and runs all migrations", async () => {
+  it("links libraries in initial project, and runs all migrations", async function () {
     this.timeout(10000);
 
     config.network = "primary";
 
-    await Contracts.compile(config.with({ all: false, quiet: true }));
+    await WorkflowCompile.compileAndSave(
+      config.with({ all: false, quiet: true })
+    );
 
     await Migrate.run(config.with({ quiet: true }));
 
@@ -110,7 +112,7 @@ describe("migrate", function() {
     );
   });
 
-  it("should migrate secondary network without altering primary network", async () => {
+  it("should migrate secondary network without altering primary network", async function () {
     this.timeout(10000);
 
     config.network = "secondary";
@@ -169,7 +171,7 @@ describe("migrate", function() {
       "Migrations contract should have an address on secondary network"
     );
 
-    Object.keys(networks["primary"]).forEach(function(contract_name) {
+    Object.keys(networks["primary"]).forEach(function (contract_name) {
       assert.notEqual(
         networks["secondary"][contract_name],
         networks["primary"][contract_name],
@@ -178,7 +180,7 @@ describe("migrate", function() {
     });
   });
 
-  it("should ignore files that don't start with a number", () => {
+  it("should ignore files that don't start with a number", function () {
     fs.writeFileSync(
       path.join(config.migrations_directory, "~2_deploy_contracts.js"),
       "module.exports = function() {};",
@@ -193,7 +195,7 @@ describe("migrate", function() {
     );
   });
 
-  it("should ignore non-js extensions", () => {
+  it("should ignore non-js extensions", function () {
     fs.writeFileSync(
       path.join(config.migrations_directory, "2_deploy_contracts.js~"),
       "module.exports = function() {};",

@@ -10,7 +10,7 @@ const selectors = require("@truffle/debugger").selectors;
 const { session, solidity, trace, evm, controller } = selectors;
 
 const analytics = require("../services/analytics");
-const ReplManager = require("../repl");
+const repl = require("repl");
 
 const { DebugPrinter } = require("./printer");
 
@@ -40,9 +40,8 @@ class DebugInterpreter {
     this.printer = new DebugPrinter(config, session);
     this.txHash = txHash;
     this.lastCommand = "n";
-
-    this.repl = config.repl || new ReplManager(config);
     this.enabledExpressions = new Set();
+    this.repl = null;
   }
 
   async setOrClearBreakpoint(args, setOrClear) {
@@ -50,7 +49,7 @@ class DebugInterpreter {
     const currentLocation = this.session.view(controller.current.location);
     const breakpoints = this.session.view(controller.breakpoints);
 
-    const currentNode = currentLocation.node ? currentLocation.node.id : null;
+    const currentNode = currentLocation.astRef;
     const currentSourceId = currentLocation.source
       ? currentLocation.source.id
       : null;
@@ -59,9 +58,6 @@ class DebugInterpreter {
         ? //sourceRange is never null, so we go by whether currentSourceId is null/undefined
           currentLocation.sourceRange.lines.start.line
         : null;
-    const currentCompilationId = currentLocation.source
-      ? currentLocation.source.compilationId
-      : null;
 
     let breakpoint = {};
 
@@ -75,7 +71,6 @@ class DebugInterpreter {
       breakpoint.node = currentNode;
       breakpoint.line = currentLine;
       breakpoint.sourceId = currentSourceId;
-      breakpoint.compilationId = currentCompilationId;
     }
 
     //the special case of "B all"
@@ -107,7 +102,6 @@ class DebugInterpreter {
       }
 
       breakpoint.sourceId = currentSourceId;
-      breakpoint.compilationId = currentCompilationId;
       breakpoint.line = currentLine + delta;
     }
 
@@ -127,12 +121,7 @@ class DebugInterpreter {
       }
 
       //search sources for given string
-      let sources = [].concat(
-        ...Object.values(this.session.view(solidity.info.sources)).map(
-          ({ byId }) => byId
-        )
-      );
-
+      let sources = Object.values(this.session.view(solidity.views.sources));
       //we will indeed need the sources here, not just IDs
       let matchingSources = sources.filter(source =>
         source.sourcePath.includes(sourceArg)
@@ -154,7 +143,6 @@ class DebugInterpreter {
 
       //otherwise, we found it!
       breakpoint.sourceId = matchingSources[0].id;
-      breakpoint.compilationId = matchingSources[0].compilationId;
       breakpoint.line = line - 1; //adjust for zero-indexing!
     }
 
@@ -174,7 +162,6 @@ class DebugInterpreter {
       }
 
       breakpoint.sourceId = currentSourceId;
-      breakpoint.compilationId = currentCompilationId;
       breakpoint.line = line - 1; //adjust for zero-indexing!
     }
 
@@ -196,24 +183,17 @@ class DebugInterpreter {
 
     //having constructed and adjusted breakpoint, here's now a
     //user-readable message describing its location
-    let sources = this.session.view(solidity.info.sources);
+    let sources = this.session.view(solidity.views.sources);
     let sourceNames = Object.assign(
+      //note: only include user sources
       {},
-      ...Object.entries(sources).map(
-        ([compilationId, { byId: compilation }]) => ({
-          [compilationId]: Object.assign(
-            {},
-            ...Object.values(compilation).map(({ id, sourcePath }) => ({
-              [id]: path.basename(sourcePath)
-            }))
-          )
-        })
-      )
+      ...Object.entries(sources).map(([id, source]) => ({
+        [id]: path.basename(source.sourcePath)
+      }))
     );
     let locationMessage = DebugUtils.formatBreakpointLocation(
       breakpoint,
-      true,
-      currentCompilationId,
+      true, //only relevant for node-based breakpoints
       currentSourceId,
       sourceNames
     );
@@ -222,7 +202,6 @@ class DebugInterpreter {
     let alreadyExists =
       breakpoints.filter(
         existingBreakpoint =>
-          existingBreakpoint.compilationId === breakpoint.compilationId &&
           existingBreakpoint.sourceId === breakpoint.sourceId &&
           existingBreakpoint.line === breakpoint.line &&
           existingBreakpoint.node === breakpoint.node //may be undefined
@@ -265,10 +244,13 @@ class DebugInterpreter {
     }
 
     if (this.session.view(session.status.loaded)) {
+      debug("loaded");
       this.printer.printSessionLoaded();
     } else if (this.session.view(session.status.isError)) {
+      debug("error!");
       this.printer.printSessionError();
     } else {
+      debug("didn't attempt a load");
       this.printer.printHelp();
     }
 
@@ -276,21 +258,11 @@ class DebugInterpreter {
       ? DebugUtils.formatPrompt(this.network, this.txHash)
       : DebugUtils.formatPrompt(this.network);
 
-    this.repl.start({
-      prompt,
-      interpreter: util.callbackify(this.interpreter.bind(this)),
+    this.repl = repl.start({
+      prompt: prompt,
+      eval: util.callbackify(this.interpreter.bind(this)),
       ignoreUndefined: true,
       done: terminate
-    });
-  }
-
-  setPrompt(prompt) {
-    this.repl.activate.bind(this.repl)({
-      prompt,
-      context: {},
-      //this argument only *adds* things, so it's safe to set it to {}
-      ignoreUndefined: true
-      //set to true because it's set to true below :P
     });
   }
 
@@ -304,10 +276,7 @@ class DebugInterpreter {
     }
 
     //split arguments for commands that want that; split on runs of spaces
-    splitArgs = cmd
-      .trim()
-      .split(/ +/)
-      .slice(1);
+    splitArgs = cmd.trim().split(/ +/).slice(1);
     debug("splitArgs %O", splitArgs);
 
     //warning: this bit *alters* cmd!
@@ -324,7 +293,7 @@ class DebugInterpreter {
 
     //quit if that's what we were given
     if (cmd === "q") {
-      return await util.promisify(this.repl.stop.bind(this.repl))();
+      process.exit();
     }
 
     let alreadyFinished = this.session.view(trace.finishedOrUnloaded);
@@ -377,7 +346,7 @@ class DebugInterpreter {
         case ";":
           //are we "finished" because we've reached the end, or because
           //nothing is loaded?
-          if (this.session.view(selectors.session.status.loaded)) {
+          if (this.session.view(session.status.loaded)) {
             this.printer.print("Transaction has halted; cannot advance.");
             this.printer.print("");
           } else {
@@ -389,7 +358,7 @@ class DebugInterpreter {
     if (cmd === "r") {
       //reset if given the reset command
       //(but not if nothing is loaded)
-      if (this.session.view(selectors.session.status.loaded)) {
+      if (this.session.view(session.status.loaded)) {
         await this.session.reset();
       } else {
         this.printer.print("No transaction loaded.");
@@ -398,17 +367,15 @@ class DebugInterpreter {
     }
     if (cmd === "t") {
       if (!this.fetchExternal) {
-        if (!this.session.view(selectors.session.status.loaded)) {
+        if (!this.session.view(session.status.loaded)) {
           let txSpinner = ora(
             DebugUtils.formatTransactionStartMessage()
           ).start();
-          await this.session.load(cmdArgs);
-          //if load succeeded
-          if (this.session.view(selectors.session.status.success)) {
+          try {
+            await this.session.load(cmdArgs);
             txSpinner.succeed();
-            //if successful, change prompt
-            this.setPrompt(DebugUtils.formatPrompt(this.network, cmdArgs));
-          } else {
+            this.repl.setPrompt(DebugUtils.formatPrompt(this.network, cmdArgs));
+          } catch (_) {
             txSpinner.fail();
             loadFailed = true;
           }
@@ -427,10 +394,10 @@ class DebugInterpreter {
     }
     if (cmd === "T") {
       if (!this.fetchExternal) {
-        if (this.session.view(selectors.session.status.loaded)) {
+        if (this.session.view(session.status.loaded)) {
           await this.session.unload();
           this.printer.print("Transaction unloaded.");
-          this.setPrompt(DebugUtils.formatPrompt(this.network));
+          this.repl.setPrompt(DebugUtils.formatPrompt(this.network));
         } else {
           this.printer.print("No transaction to unload.");
           this.printer.print("");
@@ -439,6 +406,26 @@ class DebugInterpreter {
         this.printer.print(
           "Cannot change transactions in fetch-external mode.  Please quit and restart the debugger instead."
         );
+      }
+    }
+    if (cmd === "g") {
+      if (!this.session.view(controller.stepIntoInternalSources)) {
+        this.session.setInternalStepping(true);
+        this.printer.print(
+          "All debugger commands can now step into generated sources."
+        );
+      } else {
+        this.printer.print("Generated sources already activated.");
+      }
+    }
+    if (cmd === "G") {
+      if (this.session.view(controller.stepIntoInternalSources)) {
+        this.session.setInternalStepping(false);
+        this.printer.print(
+          "Commands other than (;) and (c) will now skip over generated sources."
+        );
+      } else {
+        this.printer.print("Generated sources already off.");
       }
     }
 
@@ -450,10 +437,15 @@ class DebugInterpreter {
         await this.printer.printRevertMessage();
         this.printer.print("");
         this.printer.printStacktrace(true); //final stacktrace
+        this.printer.print("");
+        this.printer.printErrorLocation();
       } else {
         //case if transaction succeeded
         this.printer.print("Transaction completed successfully.");
-        await this.printer.printReturnValue();
+        if (this.session.view(solidity.current.source).language !== "Vyper") {
+          //HACK: not supported for vyper yet
+          await this.printer.printReturnValue();
+        }
       }
     }
 
@@ -476,8 +468,15 @@ class DebugInterpreter {
       case "?":
         this.printer.printWatchExpressions(this.enabledExpressions);
         this.printer.printBreakpoints();
+        this.printer.printGeneratedSourcesState();
         break;
       case "v":
+        if (this.session.view(solidity.current.source).language === "Vyper") {
+          this.printer.print(
+            "Decoding of variables is not currently supported for Vyper."
+          );
+          break;
+        }
         await this.printer.printVariables();
         if (this.session.view(trace.finished)) {
           await this.printer.printReturnValue();
@@ -518,7 +517,7 @@ class DebugInterpreter {
           debug("location: %s", location);
           temporaryPrintouts.add(location);
         }
-        if (this.session.view(selectors.session.status.loaded)) {
+        if (this.session.view(session.status.loaded)) {
           if (this.session.view(trace.steps).length > 0) {
             this.printer.printInstruction(temporaryPrintouts);
             this.printer.printFile();
@@ -534,7 +533,7 @@ class DebugInterpreter {
         );
         break;
       case "l":
-        if (this.session.view(selectors.session.status.loaded)) {
+        if (this.session.view(session.status.loaded)) {
           this.printer.printFile();
           this.printer.printState(LINES_BEFORE_LONG, LINES_AFTER_LONG);
         }
@@ -550,12 +549,21 @@ class DebugInterpreter {
         );
         break;
       case "s":
-        if (this.session.view(selectors.session.status.loaded)) {
-          this.printer.printStacktrace(
-            //print final report if finished & failed, intermediate if not
+        if (this.session.view(session.status.loaded)) {
+          //print final report if finished & failed, intermediate if not
+          if (
             this.session.view(trace.finished) &&
-              !this.session.view(evm.transaction.status)
-          );
+            !this.session.view(evm.transaction.status)
+          ) {
+            this.printer.printStacktrace(true); //print final stack trace
+            //Now: actually show the point where things went wrong
+            this.printer.printErrorLocation(
+              LINES_BEFORE_LONG,
+              LINES_AFTER_LONG
+            );
+          } else {
+            this.printer.printStacktrace(false); //intermediate call stack
+          }
         }
         break;
       case "o":
@@ -575,7 +583,7 @@ class DebugInterpreter {
         );
         break;
       case "r":
-        if (this.session.view(selectors.session.status.loaded)) {
+        if (this.session.view(session.status.loaded)) {
           this.printer.printAddressesAffected();
           this.printer.warnIfNoSteps();
           this.printer.printFile();
@@ -588,21 +596,21 @@ class DebugInterpreter {
           this.printer.warnIfNoSteps();
           this.printer.printFile();
           this.printer.printState();
-        } else if (this.session.view(selectors.session.status.isError)) {
-          let loadError = this.session.view(selectors.session.status.error);
+        } else if (this.session.view(session.status.isError)) {
+          let loadError = this.session.view(session.status.error);
           this.printer.print(loadError);
         }
         break;
       case "T":
+      case "g":
+      case "G":
         //nothing to print
         break;
       default:
-        this.printer.printHelp();
+        this.printer.printHelp(this.lastCommand);
     }
 
     if (
-      cmd !== "i" &&
-      cmd !== "u" &&
       cmd !== "b" &&
       cmd !== "B" &&
       cmd !== "v" &&
@@ -617,6 +625,8 @@ class DebugInterpreter {
       cmd !== "-" &&
       cmd !== "t" &&
       cmd !== "T" &&
+      cmd !== "g" &&
+      cmd !== "G" &&
       cmd !== "s"
     ) {
       this.lastCommand = cmd;

@@ -21,6 +21,25 @@ import * as Codec from "@truffle/codec";
 
 import Web3Adapter from "../adapter";
 
+//the following two functions are for Besu compatibility
+function padStackAndMemory(steps) {
+  return steps.map(step => ({
+    ...step,
+    stack: step.stack.map(padHexString),
+    memory: step.memory.map(padHexString)
+  }));
+}
+
+//turns Besu-style (begins with 0x, may be shorter than 64 hexdigits)
+//to Geth/Ganache-style (no 0x, always 64 hexdigits)
+//(I say 64 hexdigits rather than 32 bytes because Besu-style will use
+//non-whole numbers of bytes!)
+function padHexString(hexString) {
+  return hexString.startsWith("0x") //Besu-style or Geth/Ganache-style?
+    ? hexString.slice(2).padStart(2 * Codec.Evm.Utils.WORD_SIZE, "0") //convert Besu to Geth/Ganache
+    : hexString; //leave Geth/Ganache style alone
+}
+
 function* fetchTransactionInfo(adapter, { txHash }) {
   debug("inspecting transaction");
   var trace;
@@ -33,14 +52,16 @@ function* fetchTransactionInfo(adapter, { txHash }) {
   }
 
   debug("got trace");
+  trace = padStackAndMemory(trace); //for Besu compatibility
   yield put(actions.receiveTrace(trace));
 
-  let tx = yield apply(adapter, adapter.getTransaction, [txHash]);
+  const tx = yield apply(adapter, adapter.getTransaction, [txHash]);
   debug("tx %O", tx);
-  let receipt = yield apply(adapter, adapter.getReceipt, [txHash]);
+  const receipt = yield apply(adapter, adapter.getReceipt, [txHash]);
   debug("receipt %O", receipt);
-  let block = yield apply(adapter, adapter.getBlock, [tx.blockNumber]);
+  const block = yield apply(adapter, adapter.getBlock, [tx.blockNumber]);
   debug("block %O", block);
+  const chainId = yield apply(adapter, adapter.getChainId);
 
   yield put(session.saveTransaction(tx));
   yield put(session.saveReceipt(receipt));
@@ -52,7 +73,8 @@ function* fetchTransactionInfo(adapter, { txHash }) {
     difficulty: new BN(block.difficulty),
     gaslimit: new BN(block.gasLimit),
     number: new BN(block.number),
-    timestamp: new BN(block.timestamp)
+    timestamp: new BN(block.timestamp),
+    chainid: new BN(chainId) //key is lowercase because that's what Solidity does
   };
 
   if (tx.to != null) {

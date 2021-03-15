@@ -12,7 +12,7 @@ export function addContext({
   contractId,
   contractKind,
   isConstructor,
-  externalSolidity
+  linearizedBaseContracts
 }) {
   return {
     type: ADD_CONTEXT,
@@ -28,7 +28,7 @@ export function addContext({
     contractId,
     contractKind,
     isConstructor,
-    externalSolidity
+    linearizedBaseContracts
   };
 }
 
@@ -39,6 +39,24 @@ export function addInstance(address, context, binary) {
     address,
     context,
     binary
+  };
+}
+
+export const ADD_AFFECTED_INSTANCE = "EVM_ADD_AFFECTED_INSTANCE";
+export function addAffectedInstance(
+  address,
+  context,
+  binary,
+  creationBinary,
+  creationContext
+) {
+  return {
+    type: ADD_AFFECTED_INSTANCE,
+    address,
+    context,
+    binary,
+    creationBinary, //may be undefined
+    creationContext
   };
 }
 

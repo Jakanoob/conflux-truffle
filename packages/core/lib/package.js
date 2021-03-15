@@ -137,7 +137,7 @@ const Package = {
         "following link for an example configuration:" +
         OS.EOL +
         OS.EOL +
-        "    http://truffleframework.com/tutorials/using-infura-custom-provider" +
+        "    http://trufflesuite.com/tutorials/using-infura-custom-provider" +
         OS.EOL;
       if (callbackPassed) {
         callback(new TruffleError(message));
@@ -224,7 +224,7 @@ const Package = {
     // Now get the URIs of each network that's been deployed to.
     let result;
     try {
-      await Networks.asURIs(options, deployed_networks);
+      result = await Networks.asURIs(options, deployed_networks);
     } catch (error) {
       if (callbackPassed) {
         return callback(err);

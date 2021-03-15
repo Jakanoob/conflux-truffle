@@ -69,7 +69,10 @@ export function popNWhere(array, numToRemove, predicate) {
  * @return 0x-prefix string of keccak256 hash
  */
 export function keccak256(...args) {
-  return Codec.Conversion.toHexString(Codec.Evm.Utils.keccak256(...args));
+  return Codec.Conversion.toHexString(
+    Codec.Evm.Utils.keccak256(...args),
+    Codec.Evm.Utils.WORD_SIZE
+  );
 }
 
 /**
@@ -136,5 +139,14 @@ export function isStaticCallMnemonic(op) {
  */
 export function isCreateMnemonic(op) {
   const creates = ["CREATE", "CREATE2"];
+  return creates.includes(op);
+}
+
+/*
+ * Given a mmemonic, determine whether it's the mnemonic of a self-destruct
+ * instruction
+ */
+export function isSelfDestructMnemonic(op) {
+  const creates = ["SELFDESTRUCT", "SUICIDE"]; //latter name shouldn't be used anymore but let's be safe
   return creates.includes(op);
 }

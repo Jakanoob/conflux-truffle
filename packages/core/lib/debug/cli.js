@@ -2,6 +2,8 @@ const debugModule = require("debug");
 const debug = debugModule("lib:debug:cli");
 
 const ora = require("ora");
+const fs = require("fs-extra");
+const path = require("path");
 
 const Debugger = require("@truffle/debugger");
 const DebugUtils = require("@truffle/debug-utils");
@@ -21,6 +23,15 @@ class CLIDebugger {
   async run() {
     this.config.logger.log("Starting Truffle Debugger...");
 
+    const session = await this.connect();
+
+    // initialize prompt/breakpoints/ui logic
+    const interpreter = await this.buildInterpreter(session);
+
+    return interpreter;
+  }
+
+  async connect() {
     // get compilations (either by shimming compiled artifacts,
     // or by doing a recompile)
     const compilations = this.compilations || (await this.getCompilations());
@@ -28,10 +39,7 @@ class CLIDebugger {
     // invoke @truffle/debugger
     const session = await this.startDebugger(compilations);
 
-    // initialize prompt/breakpoints/ui logic
-    const interpreter = await this.buildInterpreter(session);
-
-    return interpreter;
+    return session;
   }
 
   async fetchExternalSources(bugger) {
@@ -58,103 +66,130 @@ class CLIDebugger {
           )}.`
         );
       }
+      if (badCompilationAddresses.length > 0) {
+        warningStrings.push(
+          `Errors occurred while compiling sources for addresses ${badCompilations.join(
+            ", "
+          )}.`
+        );
+      }
       fetchSpinner.warn(warningStrings.join("  "));
     }
   }
 
   async getCompilations() {
     let artifacts;
-    try {
-      artifacts = await DebugUtils.gatherArtifacts(this.config);
-    } catch (error) {
-      //leave artifacts undefined if build directory doesn't exist
-      //(HACK, sorry for doing it this way!)
-      if (!error.message.startsWith("ENOENT")) {
-        //avoid swallowing other errors
-        throw error;
-      }
-    }
-    if (artifacts) {
+    artifacts = await this.gatherArtifacts();
+    if ((artifacts && !this.config.compileAll) || this.config.compileNone) {
       let shimmedCompilations = Codec.Compilations.Utils.shimArtifacts(
         artifacts
       );
       //if they were compiled simultaneously, yay, we can use it!
-      if (shimmedCompilations.every(DebugUtils.isUsableCompilation)) {
+      //(or if we *force* it to...)
+      if (
+        this.config.compileNone ||
+        shimmedCompilations.every(DebugUtils.isUsableCompilation)
+      ) {
+        debug("shimmed compilations usable")
         return shimmedCompilations;
       }
+      debug("shimmed compilations unusable")
     }
-    //if not, or if build directory doens't exist, we have to recompile
-    let { contracts, files } = await this.compileSources();
-    return Codec.Compilations.Utils.shimArtifacts(contracts, files);
+    //if not, or if build directory doesn't exist, we have to recompile
+    return await this.compileSources();
   }
 
   async compileSources() {
     const compileSpinner = ora("Compiling your contracts...").start();
 
-    const compilationResult = await new DebugCompiler(this.config).compile();
+    const compilationResult = await new DebugCompiler(this.config).compile({
+      withTests: this.config.compileTests
+    });
     debug("compilationResult: %O", compilationResult);
 
     compileSpinner.succeed();
 
-    return {
-      contracts: compilationResult.contracts,
-      files: compilationResult.sourceIndexes
-    };
+    return Codec.Compilations.Utils.shimCompilations(compilationResult);
   }
 
   async startDebugger(compilations) {
     const startMessage = DebugUtils.formatStartMessage(
       this.txHash !== undefined
     );
-    debug("starting debugger");
-    let startSpinner;
+    let bugger;
     if (!this.config.fetchExternal) {
-      //in external mode spinner is handled below
+      //ordinary case, not doing fetch-external
+      let startSpinner;
       startSpinner = ora(startMessage).start();
-    }
-
-    //note that in external mode we start in light mode
-    //and only wake up to full mode later!
-    //note: if we are in external mode, txHash had better be defined!
-    //(this is ensured by commands/debug.js, so we don't check it ourselves)
-    const bugger =
-      this.txHash !== undefined
-        ? await Debugger.forTx(this.txHash, {
-            provider: this.config.provider,
-            compilations,
-            lightMode: this.config.fetchExternal
-          })
-        : await Debugger.forProject({
-            provider: this.config.provider,
-            compilations
-          });
-
-    debug("debugger started");
-
-    if (!this.config.fetchExternal) {
-      // check for error
-      if (bugger.view(Debugger.selectors.session.status.isError)) {
-        startSpinner.fail();
+      bugger = await Debugger.forProject({
+        provider: this.config.provider,
+        compilations
+      });
+      if (this.txHash !== undefined) {
+        try {
+          debug("loading %s", this.txHash);
+          await bugger.load(this.txHash);
+          startSpinner.succeed();
+        } catch (_) {
+          debug("loading error");
+          startSpinner.fail();
+          //just start up unloaded
+        }
       } else {
         startSpinner.succeed();
       }
     } else {
-      debug("about to fetch external sources");
+      //fetch-external case
+      //note that in this case we start in light mode
+      //and only wake up to full mode later!
+      //also, in this case, we can be sure that txHash is defined
+      bugger = await Debugger.forTx(
+        this.txHash,
+        {
+          provider: this.config.provider,
+          compilations,
+          lightMode: this.config.fetchExternal
+        }
+      ); //note: may throw!
       await this.fetchExternalSources(bugger); //note: mutates bugger!
-      startSpinner = ora(startMessage).start();
+      let startSpinner = ora(startMessage).start();
       await bugger.startFullMode();
-      if (bugger.view(Debugger.selectors.session.status.isError)) {
-        startSpinner.fail();
-      } else {
-        startSpinner.succeed();
-      }
+      //I'm removing the failure check here because I don't think that can
+      //actually happen
+      startSpinner.succeed();
     }
-
     return bugger;
   }
 
   async buildInterpreter(session) {
     return new DebugInterpreter(this.config, session, this.txHash);
+  }
+
+  async gatherArtifacts() {
+    // Gather all available contract artifacts
+    // if build directory doesn't exist, return undefined to signal that
+    // a recompile is necessary
+    if (!fs.existsSync(this.config.contracts_build_directory)) {
+      return undefined;
+    }
+    const files = fs.readdirSync(this.config.contracts_build_directory);
+
+    let contracts = files
+      .filter(filePath => {
+        return path.extname(filePath) === ".json";
+      })
+      .map(filePath => {
+        return path.basename(filePath, ".json");
+      })
+      .map(contractName => {
+        return this.config.resolver.require(contractName);
+      });
+
+    await Promise.all(
+      contracts.map(abstraction => abstraction.detectNetwork())
+    );
+
+    return contracts;
   }
 }
 

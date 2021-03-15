@@ -30,7 +30,8 @@ export function* addContext(context) {
 }
 
 /**
- * Adds known deployed instance of binary at address
+ * Adds to codex known deployed instance of binary at address
+ * (not to list of affected instances)
  *
  * @param {string} binary - may be undefined (e.g. precompiles)
  * @return {string} ID (0x-prefixed keccak of binary)
@@ -45,15 +46,61 @@ export function* addInstance(address, binary) {
   return context;
 }
 
-//goes through all instances and re-adds them with their new
+/**
+ * Adds known deployed instance of binary at address
+ * to list of affected instances, *not* to codex
+ *
+ * creationBinary may also be specified
+ *
+ * @param {string} binary - may be undefined (e.g. precompiles)
+ * @return {string} ID (0x-prefixed keccak of binary)
+ */
+export function* addAffectedInstance(address, binary, creationBinary) {
+  const search = yield select(evm.info.binaries.search);
+  const context = search(binary);
+  const creationContext = creationBinary ? search(creationBinary) : null;
+
+  //now, whether we needed a new context or not, add the instance
+  //note that these last two arguments may be undefined/null
+  yield put(
+    actions.addAffectedInstance(
+      address,
+      context,
+      binary,
+      creationBinary,
+      creationContext
+    )
+  );
+
+  return context;
+}
+
+//goes through all instances (codex & affected) and re-adds them with their new
 //context (used if new contexts have been added -- something
 //that currently only happens when adding external compilations)
 export function* refreshInstances() {
   const instances = yield select(evm.current.codex.instances);
+  const affectedInstances = yield select(evm.transaction.affectedInstances);
   for (let [address, { binary }] of Object.entries(instances)) {
     const search = yield select(evm.info.binaries.search);
     const context = search(binary);
     yield put(actions.addInstance(address, context, binary));
+  }
+  for (let [address, { binary, creationBinary }] of Object.entries(
+    affectedInstances
+  )) {
+    const search = yield select(evm.info.binaries.search);
+    const context = search(binary);
+    const creationContext = creationBinary ? search(creationBinary) : null;
+    yield put(
+      actions.addAffectedInstance(
+        address,
+        context,
+        binary,
+        creationBinary,
+        creationContext
+      )
+    );
   }
 }
 
@@ -154,19 +201,16 @@ export function* callstackAndCodexSaga() {
     } else {
       yield put(actions.returnCall());
     }
-  } else if (yield select(evm.current.step.touchesStorage)) {
+  } else if (yield select(evm.current.step.isStore)) {
     let storageAddress = (yield select(evm.current.call)).storageAddress;
     let slot = yield select(evm.current.step.storageAffected);
-    //note we get next storage, since we're updating to that
-    let storage = yield select(evm.next.state.storage);
-    //normally we'd need a 0 fallback for this next line, but in this case we
-    //can be sure the value will be there, since we're touching that storage
-    if (yield select(evm.current.step.isStore)) {
-      yield put(actions.store(storageAddress, slot, storage[slot]));
-    } else {
-      //otherwise, it's a load
-      yield put(actions.load(storageAddress, slot, storage[slot]));
-    }
+    let storedValue = yield select(evm.current.step.valueStored);
+    yield put(actions.store(storageAddress, slot, storedValue));
+  } else if (yield select(evm.current.step.isLoad)) {
+    let storageAddress = (yield select(evm.current.call)).storageAddress;
+    let slot = yield select(evm.current.step.storageAffected);
+    let loadedValue = yield select(evm.current.step.valueLoaded);
+    yield put(actions.load(storageAddress, slot, loadedValue));
   }
 }
 

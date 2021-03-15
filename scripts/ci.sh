@@ -29,7 +29,12 @@ run_geth() {
 
 if [ "$INTEGRATION" = true ]; then
 
-  sudo apt install -y jq
+  sudo add-apt-repository -y ppa:deadsnakes/ppa
+  sudo add-apt-repository -y ppa:ethereum/ethereum
+  sudo apt install -y jq python3.6 python3.6-dev python3.6-venv solc
+  wget https://bootstrap.pypa.io/get-pip.py
+  sudo python3.6 get-pip.py
+  sudo pip3 install vyper
   lerna run --scope truffle test --stream
 
 elif [ "$GETH" = true ]; then
@@ -40,27 +45,6 @@ elif [ "$GETH" = true ]; then
   sleep 30
   lerna run --scope truffle test --stream -- --exit
   lerna run --scope @truffle/contract test --stream -- --exit
-
-elif [ "$QUORUM" = true ]; then
-
-  sudo rm /usr/local/bin/docker-compose
-  curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-`uname -s`-`uname -m` > docker-compose
-  chmod +x docker-compose
-  sudo mv docker-compose /usr/local/bin
-  git clone https://github.com/jpmorganchase/quorum-examples
-  cd quorum-examples
-  QUORUM_GETH_ARGS="-allow-insecure-unlock" docker-compose up -d
-  node ../scripts/wait-for-quorum-network.js
-  lerna run --scope truffle test --stream -- --exit
-
-elif [ "$COLONY" = true ]; then
-
-  git clone https://github.com/JoinColony/colonyNetwork.git
-  cd colonyNetwork && yarn
-  git submodule update --init
-  truffle version
-  truffle compile --compilers.solc.parser=solcjs && truffle compile --compilers.solc.parser=solcjs --contracts_directory 'lib/dappsys/[!note][!stop][!proxy][!thing][!token]*.sol' && bash ./scripts/provision-token-contracts.sh
-  npm run start:blockchain:client & truffle migrate --compilers.solc.parser=solcjs --reset --compile-all && truffle test --compilers.solc.parser=solcjs ./test/contracts-network/* ./test/extensions/* --network development
 
 elif [ "$FABRICEVM" = true ]; then
 

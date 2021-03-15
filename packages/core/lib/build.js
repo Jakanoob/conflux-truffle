@@ -1,8 +1,8 @@
 const fse = require("fs-extra");
 const del = require("del");
-const Contracts = require("@truffle/workflow-compile");
+const WorkflowCompile = require("@truffle/workflow-compile");
 const BuildError = require("./errors/builderror");
-const { spawn } = require("child_process");
+const {spawn} = require("child_process");
 const spawnargs = require("spawn-args");
 const _ = require("lodash");
 const expect = require("@truffle/expect");
@@ -11,7 +11,7 @@ function CommandBuilder(command) {
   this.command = command;
 }
 
-CommandBuilder.prototype.build = function(options, callback) {
+CommandBuilder.prototype.build = function (options, callback) {
   console.log("Running `" + this.command + "`...");
 
   const args = spawnargs(this.command);
@@ -27,15 +27,15 @@ CommandBuilder.prototype.build = function(options, callback) {
     })
   });
 
-  cmd.stdout.on("data", function(data) {
+  cmd.stdout.on("data", function (data) {
     console.log(data.toString());
   });
 
-  cmd.stderr.on("data", function(data) {
+  cmd.stderr.on("data", function (data) {
     console.error(data);
   });
 
-  cmd.on("close", function(code) {
+  cmd.on("close", function (code) {
     let error = null;
     if (code !== 0) {
       error = "Command exited with code " + code;
@@ -45,22 +45,16 @@ CommandBuilder.prototype.build = function(options, callback) {
 };
 
 const Build = {
-  clean: function(options, callback) {
+  clean: async function (options) {
     const destination = options.build_directory;
     const contracts_build_directory = options.contracts_build_directory;
 
     // Clean first.
-    del([destination + "/*", "!" + contracts_build_directory])
-      .then(() => {
-        fse.ensureDirSync(destination);
-        callback();
-      })
-      .catch(error => {
-        callback(error);
-      });
+    await del([destination + "/*", "!" + contracts_build_directory]);
+    fse.ensureDirSync(destination);
   },
 
-  build: function(options, callback) {
+  build: async function (options) {
     expect.options(options, [
       "build_directory",
       "working_directory",
@@ -80,19 +74,13 @@ const Build = {
       );
     } else if (typeof builder === "string") {
       builder = new CommandBuilder(builder);
-    } else if (typeof builder !== "function") {
-      if (builder.build == null) {
-        return callback(
-          new BuildError(
-            "Build configuration can no longer be specified as an object. Please see our documentation for an updated list of supported build configurations."
-          )
-        );
-      }
-    } else {
+    } else if (typeof builder === "function") {
       // If they've only provided a build function, use that.
-      builder = {
-        build: builder
-      };
+      builder = { build: builder };
+    } else if (builder.build == null) {
+      throw new BuildError(
+        "Build configuration can no longer be specified as an object. Please see our documentation for an updated list of supported build configurations."
+      );
     }
 
     // Use our own clean method unless the builder supplies one.
@@ -101,23 +89,17 @@ const Build = {
       clean = builder.clean;
     }
 
-    clean(options, function(err) {
-      if (err) return callback(err);
+    await clean(options);
 
-      // If necessary. This prevents errors due to the .sol.js files not existing.
-      Contracts.compile(options, function(err) {
-        if (err) return callback(err);
-
-        if (builder) {
-          builder.build(options, function(err) {
-            if (typeof err === "string") {
-              return callback(new BuildError(err));
-            }
-            return callback(err);
-          });
+    // If necessary. This prevents errors due to the .sol.js files not existing.
+    await WorkflowCompile.compileAndSave(options);
+    if (builder) {
+      builder.build(options, function (err) {
+        if (typeof err === "string") {
+          throw new BuildError(err);
         }
       });
-    });
+    }
   }
 };
 

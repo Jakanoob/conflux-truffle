@@ -3,7 +3,7 @@ const path = require("path");
 const glob = require("glob");
 const { promisify } = require("util");
 
-const DEFAULT_PATTERN = "**/*.{sol,vy}";
+const DEFAULT_PATTERN = "**/*.{sol,vy,v.py,vyper.py,json,yul}";
 
 module.exports = (pattern, callback) => {
   const callbackPassed = typeof callback === "function";
@@ -14,7 +14,8 @@ module.exports = (pattern, callback) => {
   }
 
   const globOptions = {
-    follow: true // follow symlinks
+    follow: true, // follow symlinks
+    dot: true //check hidden files and directories
   };
 
   return promisify(glob)(pattern, globOptions)

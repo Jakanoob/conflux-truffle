@@ -11,8 +11,8 @@ const versionInfo = version.info();
 const XRegExp = require("xregexp");
 
 // pre-flight check: Node version compatibility
-const minimumNodeVersion = "8.9.4";
-if (!semver.satisfies(process.version, ">=" + minimumNodeVersion)) {
+const minimumNodeVersion = "10.9.0";
+if (!semver.gte(process.version, minimumNodeVersion)) {
   console.log(
     "Error: Node version not supported. You are currently using version " +
       process.version.slice(1) +
@@ -30,7 +30,6 @@ if (!semver.satisfies(process.version, ">=" + minimumNodeVersion)) {
 }
 
 const Command = require("./lib/command");
-
 const command = new Command(require("./lib/commands"));
 
 // This should be removed when issue is resolved upstream:
@@ -38,20 +37,24 @@ const command = new Command(require("./lib/commands"));
 const listeners = process.listeners("warning");
 listeners.forEach(listener => process.removeListener("warning", listener));
 
-let options = { logger: console };
+let options = {logger: console};
 
 const inputArguments = process.argv.slice(2);
-const userWantsGeneralHelp = 
-  inputArguments.length === 1 && ['help', '--help'].includes(inputArguments[0]);
+const userWantsGeneralHelp =
+  inputArguments.length === 1 && ["help", "--help"].includes(inputArguments[0]);
 
 if (userWantsGeneralHelp) {
   command.displayGeneralHelp();
   process.exit(0);
 }
 
-command.run(inputArguments, options, function(err) {
-  if (err) {
-    if (err instanceof TaskError) {
+command
+  .run(inputArguments, options)
+  .then((returnStatus) => {
+    process.exit(returnStatus);
+  })
+  .catch(error => {
+    if (error instanceof TaskError) {
       analytics.send({
         exception: "TaskError - display general help message",
         version: versionInfo.bundle
@@ -59,49 +62,45 @@ command.run(inputArguments, options, function(err) {
           : "(unbundled) " + versionInfo.core
       });
       command.displayGeneralHelp();
+    } else if (error instanceof TruffleError) {
+      analytics.send({
+        exception: "TruffleError - missing configuration file",
+        version: versionInfo.bundle
+          ? versionInfo.bundle
+          : "(unbundled) " + versionInfo.core
+      });
+      console.log(error.message);
+      version.logTruffleAndNode(options.logger);
+    } else if (typeof error === "number") {
+      analytics.send({
+        exception: "Numbered Error - " + error,
+        version: versionInfo.bundle
+          ? versionInfo.bundle
+          : "(unbundled) " + versionInfo.core
+      });
+      // If a number is returned, exit with that number.
+      process.exit(error);
     } else {
-      if (err instanceof TruffleError) {
-        analytics.send({
-          exception: "TruffleError - missing configuration file",
-          version: versionInfo.bundle
-            ? versionInfo.bundle
-            : "(unbundled) " + versionInfo.core
-        });
-        console.log(err.message);
-        version.logTruffleAndNode(options.logger);
-      } else if (typeof err === "number") {
-        analytics.send({
-          exception: "Numbered Error - " + err,
-          version: versionInfo.bundle
-            ? versionInfo.bundle
-            : "(unbundled) " + versionInfo.core
-        });
-        // If a number is returned, exit with that number.
-        process.exit(err);
-      } else {
-        let error = err.stack || err.message || err.toString();
-        //remove identifying information if error stack is passed to analytics
-        if (error === err.stack) {
-          let directory = __dirname;
-          //making sure users' identifying information does not get sent to
-          //analytics by cutting off everything before truffle. Will not properly catch the user's info
-          //here if the user has truffle in their name.
-          let identifyingInfo = String.raw`${directory.split("truffle")[0]}`;
-          let removedInfo = new XRegExp(XRegExp.escape(identifyingInfo), "g");
-          error = error.replace(removedInfo, "");
-        }
-        analytics.send({
-          exception: "Other Error - " + error,
-          version: versionInfo.bundle
-            ? versionInfo.bundle
-            : "(unbundled) " + versionInfo.core
-        });
-        // Bubble up all other unexpected errors.
-        console.log(err.stack || err.message || err.toString());
-        version.logTruffleAndNode(options.logger);
+      let errorData = error.stack || error.message || error.toString();
+      //remove identifying information if error stack is passed to analytics
+      if (errorData === error.stack) {
+        const directory = __dirname;
+        //making sure users' identifying information does not get sent to
+        //analytics by cutting off everything before truffle. Will not properly catch the user's info
+        //here if the user has truffle in their name.
+        let identifyingInfo = String.raw`${directory.split("truffle")[0]}`;
+        let removedInfo = new XRegExp(XRegExp.escape(identifyingInfo), "g");
+        errorData = errorData.replace(removedInfo, "");
       }
-    }
+      analytics.send({
+        exception: "Other Error - " + errorData,
+        version: versionInfo.bundle
+          ? versionInfo.bundle
+          : "(unbundled) " + versionInfo.core
+      });
+      // Bubble up all other unexpected errors.
+      console.log(error.stack || error.message || error.toString());
+      version.logTruffleAndNode(options.logger);
+    };
     process.exit(1);
-  }
-  process.exit(0);
-});
+  });

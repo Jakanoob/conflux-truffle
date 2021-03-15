@@ -49,18 +49,20 @@ function* stacktraceSaga() {
   //technically, an EXECUTE_RETURN could happen as well as those below,
   //resulting in 2 actions instead of just one, but it's pretty unlikely.
   //(an EXTERNAL_RETURN, OTOH, is obviously exclusive of the possibilities below)
-  if (yield select(stacktrace.current.willJumpIn)) {
+  if ((yield select(stacktrace.current.willJumpIn)) && returnCounter === 0) {
+    //note: do NOT process jumps while there are returns waiting to execute
     const nextLocation = yield select(stacktrace.next.location);
     const nextParent = yield select(stacktrace.next.contractNode);
     yield put(actions.jumpIn(currentLocation, nextLocation.node, nextParent));
     positionUpdated = true;
-  } else if (yield select(stacktrace.current.willJumpOut)) {
+  } else if (
+    (yield select(stacktrace.current.willJumpOut)) &&
+    returnCounter === 0
+  ) {
+    //again, do not process jumps while there are returns waiting to execute
     yield put(actions.jumpOut(currentLocation));
     positionUpdated = true;
   } else if (yield select(stacktrace.current.willCall)) {
-    //an external frame marked "skip in reports" will be, for reporting
-    //purposes, combined with the frame above, unless that also is an
-    //external frame (combined in the appropriate sense)
     //note: includes creations
     //note: does *not* include calls that insta-return.  logically speaking,
     //such calls should be a call + a return in one, right? and we could do that,
@@ -70,7 +72,8 @@ function* stacktraceSaga() {
     //NOTE: we can't use stacktrace.next.location here as that
     //doesn't work across call contexts!
     const nextContext = yield select(stacktrace.current.callContext);
-    yield put(actions.externalCall(currentLocation, nextContext));
+    const nextAddress = yield select(stacktrace.current.callAddress);
+    yield put(actions.externalCall(currentLocation, nextContext, nextAddress));
     positionUpdated = true;
   }
   //finally, if no other action updated the position, do so here
@@ -89,7 +92,8 @@ export function* unload() {
 
 export function* begin() {
   const context = yield select(stacktrace.current.context);
-  yield put(actions.externalCall(null, context));
+  const address = yield select(stacktrace.current.address);
+  yield put(actions.externalCall(null, context, address));
 }
 
 export function* saga() {

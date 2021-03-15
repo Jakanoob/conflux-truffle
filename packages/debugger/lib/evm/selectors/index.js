@@ -14,7 +14,8 @@ import {
   isShortCallMnemonic,
   isDelegateCallMnemonicBroad,
   isDelegateCallMnemonicStrict,
-  isStaticCallMnemonic
+  isStaticCallMnemonic,
+  isSelfDestructMnemonic
 } from "lib/helpers";
 
 const ZERO_WORD = "00".repeat(Codec.Evm.Utils.WORD_SIZE);
@@ -127,6 +128,13 @@ function createStepSelectors(step, state = null) {
     isCreate: createLeaf(["./trace"], step => isCreateMnemonic(step.op)),
 
     /**
+     * .isSelfDestruct
+     */
+    isSelfDestruct: createLeaf(["./trace"], step =>
+      isSelfDestructMnemonic(step.op)
+    ),
+
+    /**
      * .isCreate2
      */
     isCreate2: createLeaf(["./trace"], step => step.op === "CREATE2"),
@@ -171,6 +179,20 @@ function createStepSelectors(step, state = null) {
           step.op === "JUMP" ||
           (step.op === "JUMPI" && stack[stack.length - 2] !== ZERO_WORD)
       ),
+
+      /**
+       * .valueStored
+       * the storage written, as determined by looking at the stack
+       * rather than at storage (since valueLoaded is now being done
+       * this way, may as well do valueStored this way as well and
+       * completely remove our dependence on the storage field!)
+       */
+      valueStored: createLeaf(["./isStore", state], (isStore, { stack }) => {
+        if (!isStore) {
+          return null;
+        }
+        return stack[stack.length - 2];
+      }),
 
       /**
        * .callAddress
@@ -306,6 +328,21 @@ function createStepSelectors(step, state = null) {
       ),
 
       /**
+       * .salt
+       */
+      salt: createLeaf(
+        ["./isCreate2", state],
+
+        (isCreate2, { stack }) => {
+          if (!isCreate2) {
+            return null;
+          }
+
+          return "0x" + stack[stack.length - 4];
+        }
+      ),
+
+      /**
        * .callContext
        *
        * context of what this step is calling/creating (if applicable)
@@ -353,7 +390,9 @@ const evm = createSelectorTree({
        * (returns null on no match)
        */
       search: createLeaf(["/info/contexts"], contexts => binary =>
-        Codec.Contexts.Utils.findDebuggerContext(contexts, binary)
+        //HACK: the type of contexts doesn't actually match!! fortunately
+        //it's good enough to work
+        (Codec.Contexts.Utils.findContext(contexts, binary) || { context: null }).context
       )
     }
   },
@@ -362,31 +401,32 @@ const evm = createSelectorTree({
    * evm.transaction
    */
   transaction: {
-    /*
+    /**
      * evm.transaction.globals
      */
     globals: {
-      /*
+      /**
        * evm.transaction.globals.tx
        */
       tx: createLeaf(["/state"], state => state.transaction.globals.tx),
-      /*
+
+      /**
        * evm.transaction.globals.block
        */
       block: createLeaf(["/state"], state => state.transaction.globals.block)
     },
 
-    /*
+    /**
      * evm.transaction.status
      */
     status: createLeaf(["/state"], state => state.transaction.status),
 
-    /*
+    /**
      * evm.transaction.initialCall
      */
     initialCall: createLeaf(["/state"], state => state.transaction.initialCall),
 
-    /*
+    /**
      * evm.transaction.startingContext
      */
     startingContext: createLeaf(
@@ -400,6 +440,14 @@ const evm = createSelectorTree({
         stack.length > 0
           ? determineFullContext(stack[0], instances, search, contexts)
           : null
+    ),
+
+    /**
+     * evm.transaction.affectedInstances
+     */
+    affectedInstances: createLeaf(
+      ["/state"],
+      state => state.transaction.affectedInstances.byAddress
     )
   },
 
@@ -455,7 +503,7 @@ const evm = createSelectorTree({
       //the following step selectors only exist for current, not next or any
       //other step
 
-      /*
+      /**
        * evm.current.step.createdAddress
        *
        * address created by the current create step
@@ -471,7 +519,9 @@ const evm = createSelectorTree({
           if (!isCreate) {
             return null;
           }
-          let address = Codec.Evm.Utils.toAddress(stack[stack.length - 1]);
+          let address = stack //may be null if the create step itself fails
+            ? Codec.Evm.Utils.toAddress(stack[stack.length - 1])
+            : Codec.Evm.Utils.ZERO_ADDRESS; //nothing got created, so...
           if (address === Codec.Evm.Utils.ZERO_ADDRESS && isCreate2) {
             return create2Address;
           }
@@ -479,6 +529,12 @@ const evm = createSelectorTree({
         }
       ),
 
+      /**
+       * evm.current.step.create2Address
+       *
+       * address created by the current create2 step
+       * (computed, not read off the return)
+       */
       create2Address: createLeaf(
         ["./isCreate2", "./createBinary", "../call", "../state/stack"],
         (isCreate2, binary, { storageAddress }, stack) =>
@@ -507,7 +563,7 @@ const evm = createSelectorTree({
       ),
 
       /**
-       * evm.current.step.isInstantCallOrReturn
+       * evm.current.step.isInstantCallOrCreate
        *
        * are we doing a call or create for which there are no trace steps?
        * This can happen if:
@@ -531,7 +587,7 @@ const evm = createSelectorTree({
       ),
 
       /**
-       * .isNormalHalting
+       * evm.current.step.isNormalHalting
        */
       isNormalHalting: createLeaf(
         ["./isHalting", "./returnStatus"],
@@ -539,7 +595,7 @@ const evm = createSelectorTree({
       ),
 
       /**
-       * .isHalting
+       * evm.current.step.isHalting
        *
        * whether the instruction halts or returns from a calling context
        * HACK: the check for stepsRemainining === 0 is a hack to cover
@@ -562,19 +618,20 @@ const evm = createSelectorTree({
 
       /**
        * evm.current.step.returnStatus
-       * checks the return status of the *current* halting instruction
-       * returns null if not halting
+       * checks the return status of the *current* halting instruction or insta-call
+       * returns null if not halting & not an insta-call
        * (returns a boolean -- true for success, false for failure)
        */
       returnStatus: createLeaf(
         [
           "./isHalting",
+          "./isInstantCallOrCreate",
           "/next/state",
           trace.stepsRemaining,
           "/transaction/status"
         ],
-        (isHalting, { stack }, remaining, finalStatus) => {
-          if (!isHalting) {
+        (isHalting, isInstaCall, { stack }, remaining, finalStatus) => {
+          if (!isHalting && !isInstaCall) {
             return null; //not clear this'll do much good since this may get
             //read as false, but, oh well, may as well
           }
@@ -586,7 +643,7 @@ const evm = createSelectorTree({
         }
       ),
 
-      /*
+      /**
        * evm.current.step.returnValue
        *
        * for a [successful] RETURN or REVERT instruction, the value returned;
@@ -619,6 +676,41 @@ const evm = createSelectorTree({
               .substring(offset, offset + length)
               .padEnd(length, "00")
           );
+        }
+      ),
+
+      /**
+       * evm.current.step.valueLoaded
+       * the storage loaded on an SLOAD. determined by examining
+       * the next stack, rather than storage (we're avoiding
+       * relying on storage to support old versions of Geth and Besu)
+       * we do not include an initial "0x"
+       */
+      valueLoaded: createLeaf(
+        ["./isLoad", "/next/state"],
+        (isLoad, { stack }) => {
+          if (!isLoad) {
+            return null;
+          }
+          return stack[stack.length - 1];
+        }
+      ),
+
+      /**
+       * evm.current.step.beneficiary
+       * NOTE: for a value-destroying selfdestruct, returns null
+       */
+      beneficiary: createLeaf(
+        ["./isSelfDestruct", "../state", "../call"],
+
+        (isSelfDestruct, { stack }, { storageAddress: currentAddress }) => {
+          if (!isSelfDestruct) {
+            return null;
+          }
+          const beneficiary = Codec.Evm.Utils.toAddress(
+            stack[stack.length - 1]
+          );
+          return beneficiary !== currentAddress ? beneficiary : null;
         }
       )
     },
@@ -694,11 +786,15 @@ const evm = createSelectorTree({
      * evm.nextOfSameDepth.state
      *
      * evm state at the next step of same depth
+     * individual parts of the state will return null if there
+     * is no such step
      */
     state: Object.assign(
       {},
       ...["depth", "error", "gas", "memory", "stack", "storage"].map(param => ({
-        [param]: createLeaf([trace.nextOfSameDepth], step => step[param])
+        [param]: createLeaf([trace.nextOfSameDepth], step =>
+          step ? step[param] : null
+        )
       }))
     )
   }

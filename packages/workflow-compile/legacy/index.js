@@ -1,14 +1,10 @@
 const debug = require("debug")("workflow-compile");
 const fse = require("fs-extra");
 const externalCompile = require("@truffle/external-compile");
-const solcCompile = require("@truffle/compile-solidity/legacy");
+const solcCompile = require("@truffle/compile-solidity");
 const vyperCompile = require("@truffle/compile-vyper");
-const { prepareConfig, multiPromisify } = require("../utils");
-const {
-  reportCompilationStarted,
-  reportNothingToCompile,
-  reportCompilationFinished
-} = require("../reports");
+const { prepareConfig } = require("../utils");
+const { Shims } = require("@truffle/compile-common");
 
 const SUPPORTED_COMPILERS = {
   solc: solcCompile,
@@ -16,7 +12,7 @@ const SUPPORTED_COMPILERS = {
   external: externalCompile
 };
 
-const Contracts = {
+const WorkflowCompile = {
   collectCompilations: async compilations => {
     let result = { outputs: {}, contracts: {} };
 
@@ -40,7 +36,7 @@ const Contracts = {
   // network_id: network id to link saved contract artifacts.
   // quiet: Boolean. Suppress output. Defaults to false.
   // strict: Boolean. Return compiler warnings as errors. Defaults to false.
-  compile: async function(options, callback) {
+  compile: async function (options, callback) {
     const callbackPassed = typeof callback === "function";
     try {
       const config = prepareConfig(options);
@@ -67,7 +63,7 @@ const Contracts = {
       if (config.events) {
         config.events.emit("compile:succeed", {
           contractsBuildDirectory: config.contracts_build_directory,
-          compilersInfo: config.compilersInfo
+          compilers: config.compilersInfo
         });
       }
 
@@ -80,24 +76,52 @@ const Contracts = {
     }
   },
 
-  compileSources: async function(config, compilers) {
+  compileSources: async function (config, compilers) {
+    compilers = config.compiler
+      ? config.compiler === "none"
+        ? []
+        : [config.compiler]
+      : Object.keys(config.compilers);
+
     return Promise.all(
       compilers.map(async compiler => {
         const compile = SUPPORTED_COMPILERS[compiler];
         if (!compile) throw new Error("Unsupported compiler: " + compiler);
 
-        const compileFunc = multiPromisify(
+        config.compilersInfo = [];
+        const { Compile } = compile;
+        const compileFunc =
           config.all === true || config.compileAll === true
-            ? compile.all
-            : compile.necessary
+            ? Compile.all
+            : Compile.necessary;
+
+        const { compilations } = await compileFunc(config);
+        const { contracts, output } = compilations.reduce(
+          (a, compilation) => {
+            for (const contract of compilation.contracts) {
+              a.contracts[
+                contract.contractName
+              ] = Shims.NewToLegacy.forContract(contract);
+            }
+            a.output = a.output.concat(compilation.sourceIndexes);
+            return a;
+          },
+          {
+            contracts: {},
+            output: []
+          }
         );
 
-        let [contracts, output, compilerUsed] = await compileFunc(config);
+        let compilerUsed;
+        if (compilations[0] && compilations[0].compiler) {
+          compilerUsed = {
+            name: compilations[0].compiler.name,
+            version: compilations[0].compiler.version
+          };
+        }
 
         if (compilerUsed) {
-          config.compilersInfo[compilerUsed.name] = {
-            version: compilerUsed.version
-          };
+          config.compilersInfo.push(compilerUsed);
         }
 
         if (contracts && Object.keys(contracts).length > 0) {
@@ -109,14 +133,10 @@ const Contracts = {
     );
   },
 
-  reportCompilationStarted,
-  reportCompilationFinished,
-  reportNothingToCompile,
-
   writeContracts: async (contracts, options) => {
     fse.ensureDirSync(options.contracts_build_directory);
     await options.artifactor.saveAll(contracts);
   }
 };
 
-module.exports = Contracts;
+module.exports = WorkflowCompile;

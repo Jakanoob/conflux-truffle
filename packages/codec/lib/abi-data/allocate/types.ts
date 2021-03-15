@@ -1,6 +1,7 @@
+import * as Abi from "@truffle/abi-utils";
+
 import * as Compiler from "@truffle/codec/compiler";
 import * as Ast from "@truffle/codec/ast";
-import * as AbiData from "@truffle/codec/abi-data/types";
 import * as Contexts from "@truffle/codec/contexts/types";
 import * as Pointer from "@truffle/codec/pointer";
 import { DecodingMode } from "@truffle/codec/types";
@@ -9,10 +10,10 @@ import * as Format from "@truffle/codec/format";
 
 //for passing to calldata/event/state allocation functions
 export interface ContractAllocationInfo {
-  abi?: AbiData.Abi; //needed for events & calldata
+  abi?: Abi.Abi; //needed for events & calldata
   contractNode: Ast.AstNode; //needed for all 3
-  deployedContext?: Contexts.DecoderContext; //needed for events & calldata
-  constructorContext?: Contexts.DecoderContext; //needed for calldata
+  deployedContext?: Contexts.Context; //needed for events & calldata
+  constructorContext?: Contexts.Context; //needed for calldata
   immutableReferences?: ImmutableReferences; //needed for state
   compiler: Compiler.CompilerVersion; //needed for all 3
   compilationId?: string; //needed for all 3
@@ -60,12 +61,12 @@ export interface CalldataAllocations {
 }
 
 export interface CalldataConstructorAllocations {
-  [contextHash: string]: CalldataAndReturndataAllocation;
+  [contextHash: string]: CalldataAndReturndataAllocation; //note: just constructor ones
 }
 
 export interface CalldataFunctionAllocations {
   [contextHash: string]: {
-    [selector: string]: CalldataAndReturndataAllocation;
+    [selector: string]: CalldataAndReturndataAllocation; //note: just function ones
   };
 }
 
@@ -75,7 +76,7 @@ export interface CalldataAndReturndataAllocation {
 }
 
 export interface CalldataAllocation {
-  abi: AbiData.FunctionAbiEntry | AbiData.ConstructorAbiEntry;
+  abi: Abi.FunctionEntry | Abi.ConstructorEntry;
   offset: number; //measured in bytes
   arguments: CalldataArgumentAllocation[];
   allocationMode: DecodingMode;
@@ -114,7 +115,7 @@ export interface EventAllocations {
 }
 
 export interface EventAllocation {
-  abi: AbiData.EventAbiEntry;
+  abi: Abi.EventEntry;
   contextHash: string;
   definedIn?: Format.Types.ContractType; //is omitted if we don't know
   anonymous: boolean;
@@ -128,24 +129,55 @@ export interface EventArgumentAllocation {
   pointer: Pointer.EventDataPointer | Pointer.EventTopicPointer;
 }
 
-//now let's go back ands fill in returndata
-type ReturndataKind =
+//now let's go back and fill in returndata
+export type ReturndataKind = FunctionReturndataKind | ConstructorReturndataKind;
+
+export type FunctionReturndataKind =
   | "return"
   | "revert"
   | "failure"
-  | "selfdestruct"
-  | "bytecode";
+  | "selfdestruct";
+export type ConstructorReturndataKind = "bytecode";
+export type AdditionalReturndataKind = "returnmessage";
 
-export interface ReturndataAllocation {
+export type ReturndataAllocation =
+  | FunctionReturndataAllocation
+  | ConstructorReturndataAllocation
+  | AdditionalReturndataAllocation;
+
+export interface FunctionReturndataAllocation {
+  kind: FunctionReturndataKind;
   selector: Uint8Array;
-  arguments: ReturndataArgumentAllocation[]; //ignored if kind="bytecode"
+  abi?: Abi.ErrorEntry; //only included when kind === "revert", but
+  //I'm not going to bother putting that in the type system
+  arguments: ReturndataArgumentAllocation[];
   allocationMode: DecodingMode;
-  kind: ReturndataKind;
+}
+
+export interface ConstructorReturndataAllocation {
+  kind: ConstructorReturndataKind;
+  selector: Uint8Array; //must be empty, but is required for type niceness
+  immutables?: ReturnImmutableAllocation[];
+  delegatecallGuard: boolean;
+  allocationMode: DecodingMode;
+}
+
+export interface AdditionalReturndataAllocation {
+  kind: AdditionalReturndataKind;
+  selector: Uint8Array; //must be empty, but is required for type niceness
+  allocationMode: DecodingMode;
 }
 
 export interface ReturndataArgumentAllocation {
   name: string;
   type: Format.Types.Type;
+  pointer: Pointer.ReturndataPointer;
+}
+
+export interface ReturnImmutableAllocation {
+  name: string;
+  type: Format.Types.Type;
+  definedIn: Format.Types.ContractType;
   pointer: Pointer.ReturndataPointer;
 }
 

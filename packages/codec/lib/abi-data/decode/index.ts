@@ -11,7 +11,7 @@ import * as Pointer from "@truffle/codec/pointer";
 import { DecoderRequest, DecoderOptions } from "@truffle/codec/types";
 import * as Evm from "@truffle/codec/evm";
 import { abiSizeInfo } from "@truffle/codec/abi-data/allocate";
-import { DecodingError, StopDecodingError } from "@truffle/codec/errors";
+import { handleDecodingError, StopDecodingError } from "@truffle/codec/errors";
 
 type AbiLocation = "calldata" | "eventdata" | "returndata"; //leaving out "abi" as it shouldn't occur here
 
@@ -31,15 +31,7 @@ export function* decodeAbi(
     try {
       dynamic = abiSizeInfo(dataType, info.allocations.abi).dynamic;
     } catch (error) {
-      if (options.strictAbiMode) {
-        throw new StopDecodingError((<DecodingError>error).error);
-      }
-      return <Format.Errors.ErrorResult>{
-        //dunno why TS is failing at this inference
-        type: dataType,
-        kind: "error" as const,
-        error: (<DecodingError>error).error
-      };
+      return handleDecodingError(dataType, error, options.strictAbiMode);
     }
     if (dynamic) {
       return yield* decodeAbiReferenceByAddress(
@@ -76,21 +68,17 @@ export function* decodeAbiReferenceByAddress(
     pointer.location === "stack" || pointer.location === "stackliteral"
       ? "calldata"
       : pointer.location;
+  if (pointer.location !== "stack" && pointer.location !== "stackliteral") {
+    //length overrides are only applicable when you're decoding a pointer
+    //from the stack!  otherwise they must be ignored!
+    lengthOverride = undefined;
+  }
 
   let rawValue: Uint8Array;
   try {
     rawValue = yield* read(pointer, state);
-    debug("state: %O", state);
   } catch (error) {
-    if (strict) {
-      throw new StopDecodingError((<DecodingError>error).error);
-    }
-    return <Format.Errors.ErrorResult>{
-      //dunno why TS is failing here
-      type: dataType,
-      kind: "error" as const,
-      error: (<DecodingError>error).error
-    };
+    return handleDecodingError(dataType, error, strict);
   }
 
   let rawValueAsBN = Conversion.toBN(rawValue);
@@ -99,7 +87,7 @@ export function* decodeAbiReferenceByAddress(
   let rawValueAsNumber: number;
   try {
     rawValueAsNumber = rawValueAsBN.toNumber();
-  } catch (_) {
+  } catch {
     let error = {
       kind: "OverlargePointersNotImplementedError" as const,
       pointerAsBN: rawValueAsBN
@@ -122,15 +110,7 @@ export function* decodeAbiReferenceByAddress(
   try {
     ({ dynamic, size } = abiSizeInfo(dataType, allocations));
   } catch (error) {
-    if (strict) {
-      throw new StopDecodingError((<DecodingError>error).error);
-    }
-    return <Format.Errors.ErrorResult>{
-      //dunno why TS is failing here
-      type: dataType,
-      kind: "error" as const,
-      error: (<DecodingError>error).error
-    };
+    return handleDecodingError(dataType, error, strict);
   }
   if (!dynamic) {
     //this will only come up when called from stack.ts
@@ -169,15 +149,7 @@ export function* decodeAbiReferenceByAddress(
             state
           );
         } catch (error) {
-          if (strict) {
-            throw new StopDecodingError((<DecodingError>error).error);
-          }
-          return <Format.Errors.ErrorResult>{
-            //dunno why TS is failing here
-            type: dataType,
-            kind: "error" as const,
-            error: (<DecodingError>error).error
-          };
+          return handleDecodingError(dataType, error, strict);
         }
         lengthAsBN = Conversion.toBN(rawLength);
         startPosition += Evm.Utils.WORD_SIZE; //increment start position after reading length
@@ -195,7 +167,7 @@ export function* decodeAbiReferenceByAddress(
       }
       try {
         length = lengthAsBN.toNumber();
-      } catch (_) {
+      } catch {
         //note: if we're in this situation, we can assume we're not in strict mode,
         //as the strict case was handled above
         return <
@@ -232,6 +204,7 @@ export function* decodeAbiReferenceByAddress(
         //note we don't increment start position; static arrays don't
         //include a length word!
       } else if (lengthOverride !== undefined) {
+        debug("override: %o", lengthOverride);
         //dynamic-length array, but with length override
         lengthAsBN = lengthOverride;
         //we don't increment start position; if a length override was
@@ -249,15 +222,7 @@ export function* decodeAbiReferenceByAddress(
             state
           );
         } catch (error) {
-          //error: DecodingError
-          if (strict) {
-            throw new StopDecodingError((<DecodingError>error).error);
-          }
-          return {
-            type: dataType,
-            kind: "error" as const,
-            error: (<DecodingError>error).error
-          };
+          return handleDecodingError(dataType, error, strict);
         }
         lengthAsBN = Conversion.toBN(rawLength);
         startPosition += Evm.Utils.WORD_SIZE; //increment startPosition
@@ -275,7 +240,7 @@ export function* decodeAbiReferenceByAddress(
       }
       try {
         length = lengthAsBN.toNumber();
-      } catch (_) {
+      } catch {
         //again, if we get here, we can assume we're not in strict mode
         return {
           type: dataType,
@@ -295,14 +260,7 @@ export function* decodeAbiReferenceByAddress(
       try {
         baseSize = abiSizeInfo(dataType.baseType, allocations).size;
       } catch (error) {
-        if (strict) {
-          throw new StopDecodingError((<DecodingError>error).error);
-        }
-        return {
-          type: dataType,
-          kind: "error" as const,
-          error: (<DecodingError>error).error
-        };
+        return handleDecodingError(dataType, error, strict);
       }
 
       let decodedChildren: Format.Values.Result[] = [];
@@ -362,7 +320,7 @@ export function* decodeAbiReferenceStatic(
       let length: number;
       try {
         length = lengthAsBN.toNumber();
-      } catch (_) {
+      } catch {
         //note: since this is the static case, we don't bother including the stronger
         //strict-mode guard against getting DOSed by large array sizes, since in this
         //case we're not reading the size from the input; if there's a huge static size
@@ -384,15 +342,7 @@ export function* decodeAbiReferenceStatic(
       try {
         baseSize = abiSizeInfo(dataType.baseType, info.allocations.abi).size;
       } catch (error) {
-        //error: DecodingError
-        if (options.strictAbiMode) {
-          throw new StopDecodingError((<DecodingError>error).error);
-        }
-        return {
-          type: dataType,
-          kind: "error" as const,
-          error: (<DecodingError>error).error
-        };
+        return handleDecodingError(dataType, error, options.strictAbiMode);
       }
 
       let decodedChildren: Format.Values.Result[] = [];
@@ -444,7 +394,6 @@ function* decodeAbiStructByPosition(
   options: DecoderOptions = {}
 ): Generator<DecoderRequest, Format.Values.StructResult, Uint8Array> {
   const {
-    userDefinedTypes,
     allocations: { abi: allocations }
   } = info;
 

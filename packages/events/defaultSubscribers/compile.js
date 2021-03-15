@@ -1,39 +1,44 @@
 const OS = require("os");
 
 module.exports = {
-  initialization: function() {
+  initialization: function () {
     this.logger = console;
   },
   handlers: {
     "compile:start": [
-      function() {
+      function () {
         this.logger.log(OS.EOL + `Compiling your contracts...`);
         this.logger.log(`===========================`);
       }
     ],
     "compile:succeed": [
-      function({ contractsBuildDirectory, compilersInfo }) {
-        if (Object.keys(compilersInfo).length > 0) {
+      function ({ contractsBuildDirectory, compilers }) {
+        if (compilers.length > 0) {
           this.logger.log(`> Artifacts written to ${contractsBuildDirectory}`);
           this.logger.log(`> Compiled successfully using:`);
 
-          const maxLength = Object.keys(compilersInfo)
-            .map(name => name.length)
+          const versionReports = new Set();
+
+          const maxLength = compilers
+            .map(({ name }) => name.length)
             .reduce((max, length) => (length > max ? length : max), 0);
 
-          for (const name in compilersInfo) {
-            const padding = " ".repeat(maxLength - name.length);
+          for (const compiler of compilers) {
+            const padding = " ".repeat(maxLength - compiler.name.length);
+            const versionReport =
+              `   - ${compiler.name}:${padding} ${compiler.version}`;
 
-            this.logger.log(
-              `   - ${name}:${padding} ${compilersInfo[name].version}`
-            );
+            if (!versionReports.has(versionReport)) {
+              this.logger.log(versionReport);
+              versionReports.add(versionReport);
+            }
           }
         }
         this.logger.log();
       }
     ],
     "compile:sourcesToCompile": [
-      function({ sourceFileNames }) {
+      function ({ sourceFileNames }) {
         if (!sourceFileNames) return;
         sourceFileNames.forEach(sourceFileName =>
           this.logger.log("> Compiling " + sourceFileName)
@@ -41,13 +46,13 @@ module.exports = {
       }
     ],
     "compile:warnings": [
-      function({ warnings }) {
+      function ({ warnings }) {
         this.logger.log("> Compilation warnings encountered:");
         this.logger.log(`${OS.EOL}    ${warnings.join()}`);
       }
     ],
     "compile:nothingToCompile": [
-      function() {
+      function () {
         this.logger.log(
           `> Everything is up to date, there is nothing to compile.`
         );

@@ -1,15 +1,11 @@
 const debugModule = require("debug");
 const debug = debugModule("lib:debug:external");
 
-const Web3 = require("web3");
-const temp = require("temp").track();
-const fs = require("fs-extra");
-const path = require("path");
-
 const Codec = require("@truffle/codec");
 const Fetchers = require("@truffle/source-fetcher").default;
+const {InvalidNetworkError} = require("@truffle/source-fetcher");
 
-const { DebugCompiler } = require("./compiler");
+const {DebugCompiler} = require("./compiler");
 
 class DebugExternalHandler {
   constructor(bugger, config) {
@@ -20,27 +16,16 @@ class DebugExternalHandler {
   async fetch() {
     let badAddresses = []; //for reporting errors back
     let badFetchers = []; //similar
+    let badCompilationAddresses = []; //similar
     let addressesToSkip = new Set(); //addresses we know we can't get source for
     //note: this should always be a subset of unknownAddresses! [see below]
     //get the network id
-    const networkId = await new Web3(this.config.provider).eth.net.getId(); //note: this is a number
-    //make fetcher instances
-    debug("Fetchers: %o", Fetchers);
-    const allFetchers = await Promise.all(
-      Fetchers.map(
-        async Fetcher =>
-          await Fetcher.forNetworkId(
-            networkId,
-            this.config[Fetcher.fetcherName]
-          )
-      )
-    );
     const userFetcherNames = this.config.sourceFetchers;
     //sort/filter fetchers by user's order, if given; otherwise use default order
     let sortedFetchers = [];
     if (userFetcherNames) {
       for (let name of userFetcherNames) {
-        let Fetcher = allFetchers.find(Fetcher => Fetcher.fetcherName === name);
+        let Fetcher = Fetchers.find(Fetcher => Fetcher.fetcherName === name);
         if (Fetcher) {
           sortedFetchers.push(Fetcher);
         } else {
@@ -48,27 +33,31 @@ class DebugExternalHandler {
         }
       }
     } else {
-      sortedFetchers = allFetchers;
+      sortedFetchers = Fetchers;
     }
-    //to get the final list, we'll filter out ones that don't support this
+    const networkId = this.config.network_id; //note: this is a number
+    //make fetcher instances. we'll filter out ones that don't support this
     //network (and note ones that yielded errors)
-    let fetchers = [];
-    for (const fetcher of sortedFetchers) {
-      let isValid;
-      let failure = false;
-      try {
-        isValid = await fetcher.isNetworkValid();
-      } catch (_) {
-        isValid = false;
-        failure = true;
-      }
-      if (isValid) {
-        fetchers.push(fetcher);
-      }
-      if (failure) {
-        badFetchers.push(fetcher.fetcherName);
-      }
-    }
+    debug("Fetchers: %o", Fetchers);
+    const fetchers = (
+      await Promise.all(
+        Fetchers.map(async Fetcher => {
+          try {
+            return await Fetcher.forNetworkId(
+              networkId,
+              this.config[Fetcher.fetcherName]
+            );
+          } catch (error) {
+            if (!(error instanceof InvalidNetworkError)) {
+              //if it's *not* just an invalid network, log the error.
+              badFetchers.push(Fetcher.fetcherName);
+            }
+            //either way, filter this fetcher out
+            return null;
+          }
+        })
+      )
+    ).filter(fetcher => fetcher !== null);
     //now: the main loop!
     let address;
     while (
@@ -77,6 +66,7 @@ class DebugExternalHandler {
     ) {
       let found = false;
       let failure = false; //set in case something goes wrong while getting source
+      let failureReason; 
       //(not set if there is no source)
       for (const fetcher of fetchers) {
         //now comes all the hard parts!
@@ -88,6 +78,7 @@ class DebugExternalHandler {
         } catch (error) {
           debug("error in getting sources! %o", error);
           failure = true;
+          failureReason = "fetch";
           continue;
         }
         if (result === null) {
@@ -97,7 +88,7 @@ class DebugExternalHandler {
         }
         //if we do have it, extract sources & options
         debug("got sources!");
-        const { sources, options } = result;
+        const {sources, options} = result;
         if (options.language !== "Solidity") {
           //if it's not Solidity, bail out now
           debug("not Solidity, bailing out!");
@@ -105,40 +96,38 @@ class DebugExternalHandler {
           //break out of the fetcher loop, since *no* fetcher will work here
           break;
         }
-        //make a temporary directory to store our downloads in
-        const sourceDirectory = temp.mkdirSync("tmp-");
-        debug("tempdir: %s", sourceDirectory);
-        //save the sources to the temporary directory
-        await Promise.all(
-          Object.entries(sources).map(async ([sourcePath, source]) => {
-            const temporaryPath = path.join(sourceDirectory, sourcePath);
-            await fs.outputFile(temporaryPath, source);
-          })
-        );
         //compile the sources
-        const temporaryConfig = this.config.with({
-          contracts_directory: sourceDirectory,
+        const externalConfig = this.config.with({
           compilers: {
             solc: options
           }
+        }).merge({
+          //turn on docker if the original config has docker
+          compilers: {
+            solc: {
+              docker: ((this.config.compilers || {}).solc || {}).docker
+            }
+          }
         });
-        const { contracts, sourceIndexes: files } = await new DebugCompiler(
-          temporaryConfig
-        ).compile();
-        debug("contracts: %o", contracts);
-        debug("files: %O", files);
+        let compilations;
+        try {
+          compilations = await new DebugCompiler(externalConfig).compile(
+            { sources }
+          );
+        } catch (error) {
+          debug("compile error: %O", error);
+          failure = true;
+          failureReason = "compile";
+          continue; //try again with a different fetcher, I guess?
+        }
         //shim the result
-        const compilationId = `externalFor(${address})Via(${
-          fetcher.fetcherName
-        })`;
-        const newCompilations = Codec.Compilations.Utils.shimArtifacts(
-          contracts,
-          files,
-          compilationId,
-          true //externalSolidity flag
+        const shimmedCompilations = Codec.Compilations.Utils.shimCompilations(
+          compilations,
+          `externalFor(${address})Via(${fetcher.fetcherName})`
         );
         //add it!
-        await this.bugger.addExternalCompilations(newCompilations);
+        await this.bugger.addExternalCompilations(shimmedCompilations);
+        failure = false; //mark as *not* failed in case a previous fetcher failed
         //check: did this actually help?
         debug("checking result");
         if (!getUnknownAddresses(this.bugger).includes(address)) {
@@ -156,14 +145,25 @@ class DebugExternalHandler {
       if (found === false) {
         //if we couldn't find it, add it to the list of addresses to skip
         addressesToSkip.add(address);
-        //if we couldn't find it *and* there was a network problem, add it to
-        //the failures list
+        //if we couldn't find it *and* there was a network or compile problem,
+        //add it to the failures list
         if (failure === true) {
-          badAddresses.push(address);
+          switch (failureReason) {
+            case "fetch":
+              badAddresses.push(address);
+              break;
+            case "compile":
+              badCompilationAddresses.push(address);
+              break;
+          }
         }
       }
     }
-    return { badAddresses, badFetchers }; //main result is that we've mutated bugger,
+    return {
+      badAddresses,
+      badFetchers,
+      badCompilationAddresses
+    }; //main result is that we've mutated bugger,
     //not the return value!
   }
 }
@@ -175,7 +175,7 @@ function getUnknownAddresses(bugger) {
   );
   debug("got instances");
   return Object.entries(instances)
-    .filter(([_, { contractName }]) => contractName === undefined)
+    .filter(([_, {contractName}]) => contractName === undefined)
     .map(([address, _]) => address);
 }
 

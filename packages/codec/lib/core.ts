@@ -1,21 +1,24 @@
 import debugModule from "debug";
 const debug = debugModule("codec:core");
 
+import * as Abi from "@truffle/abi-utils";
 import * as Ast from "@truffle/codec/ast";
 import * as AbiData from "@truffle/codec/abi-data";
 import * as Topic from "@truffle/codec/topic";
-import * as Bytes from "@truffle/codec/bytes";
 import * as Pointer from "@truffle/codec/pointer";
 import {
   DecoderRequest,
+  StateVariable,
   CalldataDecoding,
   ReturndataDecoding,
   BytecodeDecoding,
+  UnknownBytecodeDecoding,
   DecodingMode,
   AbiArgument,
   LogDecoding,
-  DecoderOptions
+  LogOptions
 } from "@truffle/codec/types";
+import { ConstructorReturndataAllocation } from "@truffle/codec/abi-data/allocate";
 import * as Evm from "@truffle/codec/evm";
 import * as Contexts from "@truffle/codec/contexts";
 import { abifyType, abifyResult } from "@truffle/codec/abify";
@@ -69,7 +72,6 @@ export function* decodeCalldata(
       };
     }
   }
-  const compiler = context.compiler;
   const contextHash = context.context;
   const contractType = Contexts.Import.contextToType(context);
   isConstructor = context.isConstructor;
@@ -78,7 +80,9 @@ export function* decodeCalldata(
   let selector: string;
   //first: is this a creation call?
   if (isConstructor) {
-    allocation = allocations.constructorAllocations[contextHash].input;
+    allocation = (
+      allocations.constructorAllocations[contextHash] || { input: undefined }
+    ).input;
   } else {
     //skipping any error-handling on this read, as a calldata read can't throw anyway
     let rawSelector = yield* read(
@@ -91,16 +95,13 @@ export function* decodeCalldata(
     );
     selector = Conversion.toHexString(rawSelector);
     allocation = (
-      allocations.functionAllocations[contextHash][selector] || {
+      (allocations.functionAllocations[contextHash] || {})[selector] || {
         input: undefined
       }
     ).input;
   }
   if (allocation === undefined) {
-    let abiEntry:
-      | AbiData.FallbackAbiEntry
-      | AbiData.ReceiveAbiEntry
-      | null = null;
+    let abiEntry: Abi.FallbackEntry | Abi.ReceiveEntry | null = null;
     if (info.state.calldata.length === 0) {
       //to hell with reads, let's just be direct
       abiEntry = context.fallbackAbi.receive || context.fallbackAbi.fallback;
@@ -177,7 +178,7 @@ export function* decodeCalldata(
       kind: "constructor" as const,
       class: contractType,
       arguments: decodedArguments,
-      abi: <AbiData.ConstructorAbiEntry>allocation.abi, //we know it's a constructor, but typescript doesn't
+      abi: <Abi.ConstructorEntry>allocation.abi, //we know it's a constructor, but typescript doesn't
       bytecode: Conversion.toHexString(
         info.state.calldata.slice(0, allocation.offset)
       ),
@@ -187,7 +188,7 @@ export function* decodeCalldata(
     return {
       kind: "function" as const,
       class: contractType,
-      abi: <AbiData.FunctionAbiEntry>allocation.abi, //we know it's a function, but typescript doesn't
+      abi: <Abi.FunctionEntry>allocation.abi, //we know it's a function, but typescript doesn't
       arguments: decodedArguments,
       selector,
       decodingMode
@@ -195,19 +196,16 @@ export function* decodeCalldata(
   }
 }
 
-//note: this will likely change in the future to take options rather than targetName, but I'm
-//leaving it alone for now, as I'm not sure what form those options will take
-//(and this is something we're a bit more OK with breaking since it's primarily
-//for internal use :) )
 /**
  * @Category Decoding
  */
 export function* decodeEvent(
   info: Evm.EvmInfo,
   address: string,
-  targetName?: string
+  options: LogOptions = {}
 ): Generator<DecoderRequest, LogDecoding[], Uint8Array> {
   const allocations = info.allocations.event;
+  const extras = options.extras || "off";
   let rawSelector: Uint8Array;
   let selector: string;
   let contractAllocations: {
@@ -267,25 +265,42 @@ export function* decodeEvent(
     address
   };
   const codeAsHex = Conversion.toHexString(codeBytes);
-  const contractContext = Contexts.Utils.findDecoderContext(
-    info.contexts,
-    codeAsHex
-  );
+  const contractContext = Contexts.Utils.findContext(info.contexts, codeAsHex);
   let possibleContractAllocations: AbiData.Allocate.EventAllocation[]; //excludes anonymous events
   let possibleContractAnonymousAllocations: AbiData.Allocate.EventAllocation[];
-  if (contractContext) {
+  let possibleExtraAllocations: AbiData.Allocate.EventAllocation[]; //excludes anonymous events
+  let possibleExtraAnonymousAllocations: AbiData.Allocate.EventAllocation[];
+  const emittingContextHash = (contractContext || { context: undefined })
+    .context;
+  if (emittingContextHash) {
     //if we found the contract, maybe it's from that contract
-    const contextHash = contractContext.context;
-    const contractAllocation = contractAllocations[contextHash];
+    const contractAllocation = contractAllocations[emittingContextHash];
     const contractAnonymousAllocation =
-      contractAnonymousAllocations[contextHash];
+      contractAnonymousAllocations[emittingContextHash];
     possibleContractAllocations = contractAllocation || [];
     possibleContractAnonymousAllocations = contractAnonymousAllocation || [];
+    //also, we need to set up the extras (everything that's from a
+    //non-library contract but *not* this one)
+    possibleExtraAllocations = [].concat(
+      ...Object.entries(contractAllocations)
+        .filter(([key, _]) => key !== emittingContextHash)
+        .map(([_, value]) => value)
+    );
+    possibleExtraAnonymousAllocations = [].concat(
+      ...Object.entries(contractAnonymousAllocations)
+        .filter(([key, _]) => key !== emittingContextHash)
+        .map(([_, value]) => value)
+    );
   } else {
     //if we couldn't determine the contract, well, we have to assume it's from a library
     debug("couldn't find context");
     possibleContractAllocations = [];
     possibleContractAnonymousAllocations = [];
+    //or it's an extra, which could be any of the contracts
+    possibleExtraAllocations = [].concat(...Object.values(contractAllocations));
+    possibleExtraAnonymousAllocations = [].concat(
+      ...Object.values(contractAnonymousAllocations)
+    );
   }
   //now we get all the library allocations!
   const possibleLibraryAllocations = [].concat(
@@ -301,16 +316,43 @@ export function* decodeEvent(
   const possibleAnonymousAllocations = possibleContractAnonymousAllocations.concat(
     possibleLibraryAnonymousAllocations
   );
-  const possibleAllocationsTotal = possibleAllocations.concat(
+  const possibleAllocationsTotalMinusExtras = possibleAllocations.concat(
     possibleAnonymousAllocations
   );
+  //...and also there's the extras
+  const possibleExtraAllocationsTotal = possibleExtraAllocations.concat(
+    possibleExtraAnonymousAllocations
+  );
+  const possibleAllocationsTotal = possibleAllocationsTotalMinusExtras.concat(
+    [null], //HACK: add sentinel value before the extras
+    possibleExtraAllocationsTotal
+  );
+  //whew!
   let decodings: LogDecoding[] = [];
   allocationAttempts: for (const allocation of possibleAllocationsTotal) {
-    //first: do a name check so we can skip decoding if name is wrong
     debug("trying allocation: %O", allocation);
-    if (targetName !== undefined && allocation.abi.name !== targetName) {
+    //first: check for our sentinel value for extras (yeah, kind of HACKy)
+    if (allocation === null) {
+      switch (extras) {
+        case "on":
+          continue allocationAttempts; //ignore the sentinel and continue
+        case "off":
+          break allocationAttempts; //don't include extras; stop here
+        case "necessary":
+          //stop on the sentinel and exclude extras *unless* there are no decodings yet
+          if (decodings.length > 0) {
+            break allocationAttempts;
+          } else {
+            continue allocationAttempts;
+          }
+      }
+    }
+    //second: do a name check so we can skip decoding if name is wrong
+    //(this will likely be a more detailed check in the future)
+    if (options.name !== undefined && allocation.abi.name !== options.name) {
       continue;
     }
+    //now: the main part!
     let decodingMode: DecodingMode = allocation.allocationMode; //starts out here; degrades to abi if necessary
     const contextHash = allocation.contextHash;
     const attemptContext = info.contexts[contextHash];
@@ -446,11 +488,29 @@ const errorSelector: Uint8Array = Conversion.toBytes(
   })
 ).subarray(0, Evm.Utils.SELECTOR_SIZE);
 
-const defaultReturnAllocations: AbiData.Allocate.ReturndataAllocation[] = [
+const panicSelector: Uint8Array = Conversion.toBytes(
+  Web3Utils.soliditySha3({
+    type: "string",
+    value: "Panic(uint256)"
+  })
+).subarray(0, Evm.Utils.SELECTOR_SIZE);
+
+const defaultReturnAllocationsHighPriority: AbiData.Allocate.ReturndataAllocation[] = [
   {
     kind: "revert" as const,
     allocationMode: "full" as const,
     selector: errorSelector,
+    abi: {
+      name: "Error",
+      type: "error",
+      inputs: [
+        {
+          name: "",
+          type: "string",
+          internalType: "string"
+        }
+      ]
+    },
     arguments: [
       {
         name: "",
@@ -467,6 +527,40 @@ const defaultReturnAllocations: AbiData.Allocate.ReturndataAllocation[] = [
     ]
   },
   {
+    kind: "revert" as const,
+    allocationMode: "full" as const,
+    selector: panicSelector,
+    abi: {
+      name: "Panic",
+      type: "error",
+      inputs: [
+        {
+          name: "",
+          type: "uint256",
+          internalType: "uint256"
+        }
+      ]
+    },
+    arguments: [
+      {
+        name: "",
+        pointer: {
+          location: "returndata" as const,
+          start: panicSelector.length,
+          length: Evm.Utils.WORD_SIZE
+        },
+        type: {
+          typeClass: "uint" as const,
+          bits: Evm.Utils.WORD_SIZE * 8, // :)
+          typeHint: "uint256"
+        }
+      }
+    ]
+  }
+];
+
+const defaultReturnAllocationsLowPriority: AbiData.Allocate.ReturndataAllocation[] = [
+  {
     kind: "failure" as const,
     allocationMode: "full" as const,
     selector: new Uint8Array(), //empty by default
@@ -480,9 +574,14 @@ const defaultReturnAllocations: AbiData.Allocate.ReturndataAllocation[] = [
   }
 ];
 
+const defaultReturnAllocations = [
+  ...defaultReturnAllocationsHighPriority,
+  ...defaultReturnAllocationsLowPriority
+];
+
 /**
  * If there are multiple possibilities, they're always returned in
- * the order: return, revert, failure, empty, bytecode, unknownbytecode
+ * the order: return, revert, returnmessage, failure, empty, bytecode, unknownbytecode
  * @Category Decoding
  */
 export function* decodeReturndata(
@@ -501,6 +600,13 @@ export function* decodeReturndata(
       case "bytecode":
         possibleAllocations = [...defaultReturnAllocations, successAllocation];
         break;
+      case "returnmessage":
+        possibleAllocations = [
+          ...defaultReturnAllocationsHighPriority,
+          successAllocation,
+          ...defaultReturnAllocationsLowPriority
+        ];
+        break;
       //Other cases shouldn't happen so I'm leaving them to cause errors!
     }
   }
@@ -516,7 +622,12 @@ export function* decodeReturndata(
     encodedData = encodedData.subarray(allocation.selector.length); //slice off the selector for later
     //also we check, does the status match?
     if (status !== undefined) {
-      const successKinds = ["return", "selfdestruct", "bytecode"];
+      const successKinds = [
+        "return",
+        "selfdestruct",
+        "bytecode",
+        "returnmessage"
+      ];
       const failKinds = ["failure", "revert"];
       if (status) {
         if (!successKinds.includes(allocation.kind)) {
@@ -528,51 +639,27 @@ export function* decodeReturndata(
         }
       }
     }
-    let decodingMode: DecodingMode = allocation.allocationMode; //starts out here; degrades to abi if necessary
     if (allocation.kind === "bytecode") {
       //bytecode is special and can't really be integrated with the other cases.
-      //so it gets its own code here.
-      const bytecode = Conversion.toHexString(info.state.returndata);
-      const context = Contexts.Utils.findDecoderContext(
-        info.contexts,
-        bytecode
-      );
-      if (!context) {
-        decodings.push({
-          kind: "unknownbytecode" as const,
-          status: true as const,
-          decodingMode,
-          bytecode
-        });
-        continue; //skip the rest of the code in the allocation loop!
+      //so it gets its own function.
+      const decoding = yield* decodeBytecode(info);
+      if (decoding) {
+        decodings.push(decoding);
       }
-      const contractType = Contexts.Import.contextToType(context);
-      let decoding: BytecodeDecoding = {
-        kind: "bytecode" as const,
-        status: true as const,
-        decodingMode,
-        bytecode,
-        class: contractType
-      };
-      if (contractType.contractKind === "library") {
-        //note: I am relying on this being present!
-        //(also this part is a bit HACKy)
-        const pushAddressInstruction = (
-          0x60 +
-          Evm.Utils.ADDRESS_SIZE -
-          1
-        ).toString(16); //"73"
-        const delegateCallGuardString =
-          "0x" + pushAddressInstruction + "..".repeat(Evm.Utils.ADDRESS_SIZE);
-        if (context.binary.startsWith(delegateCallGuardString)) {
-          decoding.address = Web3Utils.toChecksumAddress(
-            bytecode.slice(4, 4 + 2 * Evm.Utils.ADDRESS_SIZE) //4 = "0x73".length
-          );
-        }
-      }
-      decodings.push(decoding);
-      continue; //skip the rest of the code in the allocation loop!
+      continue;
     }
+    if (allocation.kind === "returnmessage") {
+      //this kind is also special, though thankfully it's easier
+      const decoding = {
+        kind: "returnmessage" as const,
+        status: true as const,
+        data: Conversion.toHexString(info.state.returndata),
+        decodingMode: allocation.allocationMode
+      };
+      decodings.push(decoding);
+      continue;
+    }
+    let decodingMode: DecodingMode = allocation.allocationMode; //starts out here; degrades to abi if necessary
     //you can't map with a generator, so we have to do this map manually
     let decodedArguments: AbiArgument[] = [];
     for (const argumentAllocation of allocation.arguments) {
@@ -671,6 +758,7 @@ export function* decodeReturndata(
       case "revert":
         decoding = {
           kind,
+          abi: allocation.abi,
           status: false as const,
           arguments: decodedArguments,
           decodingMode
@@ -694,6 +782,82 @@ export function* decodeReturndata(
     decodings.push(decoding);
   }
   return decodings;
+}
+
+//note: requires the bytecode to be in returndata, not code
+function* decodeBytecode(
+  info: Evm.EvmInfo
+): Generator<
+  DecoderRequest,
+  BytecodeDecoding | UnknownBytecodeDecoding | null,
+  Uint8Array
+> {
+  let decodingMode: DecodingMode = "full"; //as always, degrade as necessary
+  const bytecode = Conversion.toHexString(info.state.returndata);
+  const context = Contexts.Utils.findContext(info.contexts, bytecode);
+  if (!context) {
+    return {
+      kind: "unknownbytecode" as const,
+      status: true as const,
+      decodingMode: "full" as const,
+      bytecode
+    };
+  }
+  const contractType = Contexts.Import.contextToType(context);
+  //now: ignore original allocation (which we didn't even pass :) )
+  //and lookup allocation by context
+  const allocation = <ConstructorReturndataAllocation>(
+    info.allocations.calldata.constructorAllocations[context.context].output
+  );
+  debug("bytecode allocation: %O", allocation);
+  //now: add immutables if applicable
+  let immutables: StateVariable[] | undefined;
+  if (allocation.immutables) {
+    immutables = [];
+    //NOTE: if we're in here, we can assume decodingMode === "full"
+    for (const variable of allocation.immutables) {
+      const dataType = variable.type; //we don't conditioning on decodingMode here because we know it
+      let value: Format.Values.Result;
+      try {
+        value = yield* decode(dataType, variable.pointer, info, {
+          allowRetry: true, //we know we're in full mode
+          strictAbiMode: true,
+          paddingMode: "zero" //force zero-padding!
+        });
+      } catch (error) {
+        if (error instanceof StopDecodingError && error.allowRetry) {
+          //we "retry" by... not bothering with immutables :P
+          //(but we do set the mode to ABI)
+          decodingMode = "abi";
+          immutables = undefined;
+          break;
+        } else {
+          //otherwise, this isn't a valid decoding I guess
+          return null;
+        }
+      }
+      immutables.push({
+        name: variable.name,
+        class: variable.definedIn,
+        value
+      });
+    }
+  }
+  let decoding: BytecodeDecoding = {
+    kind: "bytecode" as const,
+    status: true as const,
+    decodingMode,
+    bytecode,
+    immutables,
+    class: contractType
+  };
+  //finally: add address if applicable
+  if (allocation.delegatecallGuard) {
+    decoding.address = Web3Utils.toChecksumAddress(
+      bytecode.slice(4, 4 + 2 * Evm.Utils.ADDRESS_SIZE) //4 = "0x73".length
+    );
+  }
+  return decoding;
 }
 
 /**

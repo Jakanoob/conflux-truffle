@@ -1,30 +1,33 @@
-const debug = require("debug")("compile:run"); // eslint-disable-line no-unused-vars
+const debug = require("debug")("compile:run");
 const OS = require("os");
 const semver = require("semver");
-
-const CompileError = require("./compileerror");
+const Common = require("@truffle/compile-common");
 const CompilerSupplier = require("./compilerSupplier");
 
+// this function returns a Compilation - legacy/index.js and ./index.js
+// both check to make sure rawSources exist before calling this method
+// however, there is a check here that returns null if no sources exist
 async function run(rawSources, options) {
   if (Object.keys(rawSources).length === 0) {
-    return {
-      contracts: [],
-      sourceIndexes: [],
-      compilerInfo: undefined
-    };
+    return null;
   }
+
   // Ensure sources have operating system independent paths
   // i.e., convert backslashes to forward slashes; things like C: are left intact.
-  const { sources, targets, originalSourcePaths } = collectSources(
-    rawSources,
-    options.compilationTargets
-  );
+  const {
+    sources,
+    targets,
+    originalSourcePaths
+  } = Common.Sources.collectSources(rawSources, options.compilationTargets);
+
   // construct solc compiler input
   const compilerInput = prepareCompilerInput({
     sources,
     targets,
-    settings: options.compilers.solc.settings
+    settings: options.compilers.solc.settings,
+    modelCheckerSettings: options.compilers.solc.modelCheckerSettings
   });
+
   // perform compilation
   const { compilerOutput, solcVersion } = await invokeCompiler({
     compilerInput,
@@ -47,22 +50,27 @@ async function run(rawSources, options) {
       options.logger.log("");
     }
 
-    throw new CompileError(errors);
+    throw new Common.Errors.CompileError(errors);
   }
 
   // success case
+  // returns Compilation - see @truffle/compile-common
+  const outputSources = processAllSources({
+    sources,
+    compilerOutput,
+    originalSourcePaths
+  });
+  const sourceIndexes = outputSources.map(source => source.sourcePath);
   return {
-    sourceIndexes: processSources({
-      compilerOutput,
-      originalSourcePaths
-    }),
+    sourceIndexes,
     contracts: processContracts({
       sources,
       compilerOutput,
       solcVersion,
       originalSourcePaths
     }),
-    compilerInfo: {
+    sources: outputSources,
+    compiler: {
       name: "solc",
       version: solcVersion
     }
@@ -72,6 +80,9 @@ async function run(rawSources, options) {
 function orderABI({ abi, contractName, ast }) {
   // AST can have multiple contract definitions, make sure we have the
   // one that matches our contract
+  if (!ast || !ast.nodes) {
+    return abi;
+  }
   const contractDefinition = ast.nodes.find(
     ({ nodeType, name }) =>
       nodeType === "ContractDefinition" && name === contractName
@@ -105,78 +116,17 @@ function orderABI({ abi, contractName, ast }) {
 }
 
 /**
- * Collects sources, targets into collections with OS-independent paths,
- * along with a reverse mapping to the original path (for post-processing)
- *
- * @param originalSources - { [originalSourcePath]: contents }
- * @param originalTargets - originalSourcePath[]
- * @return { sources, targets, originalSourcePaths }
- */
-function collectSources(originalSources, originalTargets = []) {
-  const mappedResults = Object.entries(originalSources)
-    .map(([originalSourcePath, contents]) => ({
-      originalSourcePath,
-      contents,
-      sourcePath: getPortableSourcePath(originalSourcePath)
-    }))
-    .map(({ originalSourcePath, sourcePath, contents }) => ({
-      sources: {
-        [sourcePath]: contents
-      },
-
-      // include transformed form as target if original is a target
-      targets: originalTargets.includes(originalSourcePath) ? [sourcePath] : [],
-
-      originalSourcePaths: {
-        [sourcePath]: originalSourcePath
-      }
-    }));
-
-  const defaultAccumulator = {
-    sources: {},
-    targets: [],
-    originalSourcePaths: {}
-  };
-
-  return mappedResults.reduce(
-    (accumulator, result) => ({
-      sources: Object.assign({}, accumulator.sources, result.sources),
-      targets: [...accumulator.targets, ...result.targets],
-      originalSourcePaths: Object.assign(
-        {},
-        accumulator.originalSourcePaths,
-        result.originalSourcePaths
-      )
-    }),
-    defaultAccumulator
-  );
-}
-
-/**
- * @param sourcePath - string
- * @return string - operating system independent path
- * @private
- */
-function getPortableSourcePath(sourcePath) {
-  // Turn all backslashes into forward slashes
-  var replacement = sourcePath.replace(/\\/g, "/");
-
-  // Turn G:/.../ into /G/.../ for Windows
-  if (replacement.length >= 2 && replacement[1] === ":") {
-    replacement = "/" + replacement;
-    replacement = replacement.replace(":", "");
-  }
-
-  return replacement;
-}
-
-/**
  * @param sources - { [sourcePath]: contents }
  * @param targets - sourcePath[]
  * @param setings - subset of Solidity settings
  * @return solc compiler input JSON
  */
-function prepareCompilerInput({ sources, targets, settings }) {
+function prepareCompilerInput({
+  sources,
+  targets,
+  settings,
+  modelCheckerSettings
+}) {
   return {
     language: "Solidity",
     sources: prepareSources({ sources }),
@@ -187,10 +137,13 @@ function prepareCompilerInput({ sources, targets, settings }) {
       debug: settings.debug,
       metadata: settings.metadata,
       libraries: settings.libraries,
+      viaIR: settings.viaIR,
+      modelChecker: settings.modelChecker,
       // Specify compilation targets. Each target uses defaultSelectors,
       // defaulting to single target `*` if targets are unspecified
       outputSelection: prepareOutputSelection({ targets })
-    }
+    },
+    modelCheckerSettings
   };
 }
 
@@ -219,10 +172,12 @@ function prepareOutputSelection({ targets = [] }) {
       "evm.bytecode.object",
       "evm.bytecode.linkReferences",
       "evm.bytecode.sourceMap",
+      "evm.bytecode.generatedSources",
       "evm.deployedBytecode.object",
       "evm.deployedBytecode.linkReferences",
       "evm.deployedBytecode.sourceMap",
       "evm.deployedBytecode.immutableReferences",
+      "evm.deployedBytecode.generatedSources",
       "userdoc",
       "devdoc"
     ]
@@ -298,7 +253,7 @@ function detectErrors({
         OS.EOL,
         `Please update your truffle config or pragma statement(s).`,
         OS.EOL,
-        `(See https://truffleframework.com/docs/truffle/reference/configuration#compiler-configuration `,
+        `(See https://trufflesuite.com/docs/truffle/reference/configuration#compiler-configuration `,
         `for information on`,
         OS.EOL,
         `configuring Truffle to use a specific solc compiler version.)`
@@ -310,17 +265,24 @@ function detectErrors({
 }
 
 /**
- * Aggregate list of sources based on reported source index
- * Returns list transformed to use original source paths
+ * aggregate source information based on compiled output;
+ * this can include sources that do not define any contracts
  */
-function processSources({ compilerOutput, originalSourcePaths }) {
-  let files = [];
-
-  for (let [sourcePath, { id }] of Object.entries(compilerOutput.sources)) {
-    files[id] = originalSourcePaths[sourcePath];
+function processAllSources({ sources, compilerOutput, originalSourcePaths }) {
+  if (!compilerOutput.sources) return [];
+  let outputSources = [];
+  for (const [sourcePath, { id, ast, legacyAST }] of Object.entries(
+    compilerOutput.sources
+  )) {
+    outputSources[id] = {
+      sourcePath: originalSourcePaths[sourcePath],
+      contents: sources[sourcePath],
+      ast,
+      legacyAST,
+      language: "Solidity"
+    };
   }
-
-  return files;
+  return outputSources;
 }
 
 /**
@@ -362,10 +324,16 @@ function processContracts({
           contractName,
           contract: {
             evm: {
-              bytecode: { sourceMap, linkReferences, object: bytecode },
+              bytecode: {
+                sourceMap,
+                linkReferences,
+                generatedSources,
+                object: bytecode
+              },
               deployedBytecode: {
                 sourceMap: deployedSourceMap,
                 linkReferences: deployedLinkReferences,
+                generatedSources: deployedGeneratedSources,
                 immutableReferences,
                 object: deployedBytecode
               }
@@ -403,6 +371,8 @@ function processContracts({
           }),
           immutableReferences, //ideally this would be part of the deployedBytecode object,
           //but compatibility makes that impossible
+          generatedSources,
+          deployedGeneratedSources,
           compiler: {
             name: "solc",
             version: solcVersion

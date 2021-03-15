@@ -35,14 +35,15 @@ const command = {
       }
     ]
   },
-  run: function(options, done) {
+  run: async function (options) {
     const Config = require("@truffle/config");
-    const Contracts = require("@truffle/workflow-compile");
+    const WorkflowCompile = require("@truffle/workflow-compile");
     const ConfigurationError = require("../errors/configurationerror");
     const Require = require("@truffle/require");
-    const { Environment } = require("@truffle/environment");
+    const {Environment} = require("@truffle/environment");
     const path = require("path");
     const OS = require("os");
+    const {promisify} = require("util");
 
     const config = Config.detect(options);
 
@@ -53,49 +54,30 @@ const command = {
     }
 
     if (file == null) {
-      done(
-        new ConfigurationError(
-          "Please specify a file, passing the path of the script you'd like the run. Note that all scripts *must* call process.exit() when finished."
-        )
+      throw new ConfigurationError(
+        "Please specify a file, passing the path of the script you'd like the run. Note that all scripts *must* call process.exit() when finished."
       );
-      return;
     }
 
     if (path.isAbsolute(file) === false) {
       file = path.join(process.cwd(), file);
     }
 
-    Environment.detect(config)
-      .then(() => {
-        if (config.networkHint !== false) {
-          config.logger.log("Using network '" + config.network + "'." + OS.EOL);
-        }
+    await Environment.detect(config);
+    if (config.networkHint !== false) {
+      config.logger.log("Using network '" + config.network + "'." + OS.EOL);
+    }
 
-        // `--compile`
-        if (options.c || options.compile) {
-          return Contracts.compile(config, function(err) {
-            if (err) return done(err);
-
-            Require.exec(
-              config.with({
-                file: file
-              }),
-              done
-            );
-          });
-        }
-
-        // Just exec
-        Require.exec(
-          config.with({
-            file: file
-          }),
-          done
-        );
-      })
-      .catch(error => {
-        done(error);
-      });
+    // `--compile`
+    let compilationOutput;
+    if (options.c || options.compile) {
+      compilationOutput = await WorkflowCompile.compile(config);
+    }
+    // save artifacts if compilation took place
+    if (compilationOutput) {
+      await WorkflowCompile.save(config, compilationOutput);
+    }
+    return await promisify(Require.exec.bind(Require))(config.with({file}));
   }
 };
 

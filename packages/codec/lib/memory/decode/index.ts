@@ -10,7 +10,8 @@ import * as Bytes from "@truffle/codec/bytes";
 import * as Pointer from "@truffle/codec/pointer";
 import { DecoderRequest, DecoderOptions } from "@truffle/codec/types";
 import * as Evm from "@truffle/codec/evm";
-import { DecodingError } from "@truffle/codec/errors";
+import { isSkippedInMemoryStructs } from "@truffle/codec/memory/allocate";
+import { handleDecodingError } from "@truffle/codec/errors";
 
 export function* decodeMemory(
   dataType: Format.Types.Type,
@@ -19,16 +20,9 @@ export function* decodeMemory(
   options: DecoderOptions = {}
 ): Generator<DecoderRequest, Format.Values.Result, Uint8Array> {
   if (Format.Types.isReferenceType(dataType)) {
-    if (dataType.typeClass === "mapping") {
-      //special case: a mapping in memory is always empty
-      //(this is here and not in decodeMemoryReferenceByAddress
-      //since no addresses are involved, and it's not worth
-      //making into its own function)
-      return {
-        type: dataType,
-        kind: "value" as const,
-        value: []
-      };
+    if (isSkippedInMemoryStructs(dataType)) {
+      //special case; these types are always empty in memory
+      return decodeMemorySkippedType(dataType);
     } else {
       return yield* decodeMemoryReferenceByAddress(
         dataType,
@@ -39,6 +33,26 @@ export function* decodeMemory(
     }
   } else {
     return yield* Basic.Decode.decodeBasic(dataType, pointer, info, options);
+  }
+}
+
+function decodeMemorySkippedType(
+  dataType: Format.Types.Type
+): Format.Values.Result {
+  switch (dataType.typeClass) {
+    case "mapping":
+      return {
+        type: dataType,
+        kind: "value" as const,
+        value: []
+      };
+    case "array":
+      return {
+        type: dataType,
+        kind: "value" as const,
+        value: []
+      };
+    //other cases should not arise!
   }
 }
 
@@ -55,19 +69,14 @@ export function* decodeMemoryReferenceByAddress(
   try {
     rawValue = yield* read(pointer, state);
   } catch (error) {
-    return <Format.Errors.ErrorResult>{
-      //dunno why TS is failing here
-      type: dataType,
-      kind: "error" as const,
-      error: (<DecodingError>error).error
-    };
+    return handleDecodingError(dataType, error);
   }
 
   let startPositionAsBN = Conversion.toBN(rawValue);
   let startPosition: number;
   try {
     startPosition = startPositionAsBN.toNumber();
-  } catch (_) {
+  } catch {
     return <Format.Errors.ErrorResult>{
       //again with the TS failures...
       type: dataType,
@@ -100,17 +109,12 @@ export function* decodeMemoryReferenceByAddress(
           state
         );
       } catch (error) {
-        return <Format.Errors.ErrorResult>{
-          //dunno why TS is failing here
-          type: dataType,
-          kind: "error" as const,
-          error: (<DecodingError>error).error
-        };
+        return handleDecodingError(dataType, error);
       }
       lengthAsBN = Conversion.toBN(rawLength);
       try {
         length = lengthAsBN.toNumber();
-      } catch (_) {
+      } catch {
         return <
           | Format.Errors.BytesDynamicErrorResult
           | Format.Errors.StringErrorResult
@@ -157,11 +161,7 @@ export function* decodeMemoryReferenceByAddress(
             state
           );
         } catch (error) {
-          return {
-            type: dataType,
-            kind: "error" as const,
-            error: (<DecodingError>error).error
-          };
+          return handleDecodingError(dataType, error);
         }
         lengthAsBN = Conversion.toBN(rawLength);
         startPosition += Evm.Utils.WORD_SIZE; //increment startPosition
@@ -171,7 +171,7 @@ export function* decodeMemoryReferenceByAddress(
       }
       try {
         length = lengthAsBN.toNumber();
-      } catch (_) {
+      } catch {
         return {
           type: dataType,
           kind: "error" as const,
@@ -221,8 +221,7 @@ export function* decodeMemoryReferenceByAddress(
       }
       //otherwise, decode as normal
       const {
-        allocations: { memory: allocations },
-        userDefinedTypes
+        allocations: { memory: allocations }
       } = info;
 
       const typeId = dataType.id;
