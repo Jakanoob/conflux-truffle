@@ -384,8 +384,8 @@ cfxtruffle(development)> await coin.transfer('net2595:aajashxerdkejbrg2531armg8d
 cfxtruffle(development)> await cfx.getBalance('net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg')
 cfxtruffle(development)> await cfx.getNextNonce("net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg")
 # cfxutil
-cfxtruffle(development)> let drip = cfxutil.unit.fromCFXToGDrip(0.1)
-cfxtruffle(development)> let randomKey = cfxutil.sign.randomPrivateKey()
+cfxtruffle(development)> let hexAddress = cfxsdk.format.hexAddress("net1998:acfvhx44e92rwhz3t99azed114th4austyjtds73wz")
+cfxtruffle(development)> let randomKey = cfxsdk.sign.randomPrivateKey()
 # 
 cfxtruffle(development)> .exit
 ```
