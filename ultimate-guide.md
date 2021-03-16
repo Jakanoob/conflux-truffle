@@ -353,7 +353,7 @@ To interact with the deployed contract, such as querying the status, initiating 
 ```sh
 $ cfxtruffle console
 cfxtruffle(development)> .help  # view help
-cfxtruffle(development)> Object.keys(global) # viewconsole environment, available global object:  accounts, cfx, cfxutil, Coin, Migrations
+cfxtruffle(development)> Object.keys(global) # viewconsole environment, available global object:  accounts, cfx, cfxsdk, Coin, Migrations
 # instantiate a coin contract, call the deployed() method of the contract object
 cfxtruffle(development)> let coin = await Coin.deployed()
 # view the owner of the contract
