@@ -383,10 +383,9 @@ cfxtruffle(development)> await coin.transfer('net2595:aajashxerdkejbrg2531armg8d
 # the integrated cfx object is a js-conlfux-sdk instance
 cfxtruffle(development)> await cfx.getBalance('net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg')
 cfxtruffle(development)> await cfx.getNextNonce("net2595:aajashxerdkejbrg2531armg8drtcterhupxeb4tdg")
-# cfxutil
+# the cfxsdk exports all `js-conflux-sdk` modules
 cfxtruffle(development)> let hexAddress = cfxsdk.format.hexAddress("net1998:acfvhx44e92rwhz3t99azed114th4austyjtds73wz")
 cfxtruffle(development)> let randomKey = cfxsdk.sign.randomPrivateKey()
-# 
 cfxtruffle(development)> .exit
 ```
 * In addition, users can also deploy a new contract in the console, instantiate a contract with a specified address and estimateGas, etc. For detailed interaction methods of the contract, please refer to [this document](https://www.trufflesuite.com/docs/truffle/getting-started/interacting-with-your-contracts)

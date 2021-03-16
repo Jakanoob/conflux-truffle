@@ -156,9 +156,11 @@ cfxtruffle(develop)> result
 # most truffle commands also available here
 cfxtruffle(develop)> compile
 cfxtruffle(develop)> networks
-# You can also access to `js-conflux-sdk`'s cfx, cfxutil
+# you can also access to `js-conflux-sdk`'s cfx 
 cfxtruffle(develop)> let balance = await cfx.getBalance("cfx:aajj1b1gm7k51mhzm80czcx31kwxrm2f6jxvy30mvk")
-cfxtruffle(develop)> cfxutil.unit.fromCFXToDrip(123)
+# the cfxsdk exports all `js-conflux-sdk` modules
+cfxtruffle(develop)> let hexAddress = cfxsdk.format.hexAddress("net1998:acfvhx44e92rwhz3t99azed114th4austyjtds73wz")
+cfxtruffle(develop)> let randomKey = cfxsdk.sign.randomPrivateKey()
 ```
 
 For detail documentation check truffle [console](https://www.trufflesuite.com/docs/truffle/getting-started/using-truffle-develop-and-the-console) and [interact with contract](https://www.trufflesuite.com/docs/truffle/getting-started/interacting-with-your-contracts).
