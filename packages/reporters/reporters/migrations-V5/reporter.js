@@ -5,6 +5,7 @@ const ora = require("ora");
 
 const indentedSpinner = require("./indentedSpinner");
 const MigrationsMessages = require("./messages");
+const { format, confluxUtil } = require("web3-providers-http-proxy");
 
 /**
  *  Reporter consumed by a migrations sequence which iteself consumes a series of Migration and
@@ -48,6 +49,7 @@ class Reporter {
    */
   setMigrator(migrator) {
     this.migrator = migrator;
+    this.wrapLogger(this.migrator);
   }
 
   /**
@@ -64,8 +66,22 @@ class Reporter {
    */
   setDeployer(deployer) {
     this.deployer = deployer;
+    this.wrapLogger(this.deployer);
   }
 
+  async wrapLogger(host) {
+    if (host.logger && host.logger.log) {
+      let oldLog = host.logger.log;
+      let networkId = await confluxUtil.detectNetworkId();
+      // console.log("wrapLogger config.networkId"+networkId);
+      host.logger.log = function(data) {
+        debug("wrap log");
+        data = format.deepFormatAddress(data, networkId);
+        data = format.repleacEthKeywords(data);
+        data!=undefined && oldLog(data);
+      };
+    }
+  }
   /**
    * Registers emitter handlers for the migrator
    */
@@ -384,11 +400,15 @@ class Reporter {
 
       const gasPrice = new web3Utils.BN(tx.gasPrice);
       const gas = new web3Utils.BN(data.receipt.gasUsed);
+      const storageCltrzd = new web3Utils.BN(data.receipt.storageCollateralized.substring(2),16);
+      const bn1024 =new web3Utils.BN(1024);
+      const storageCltrzdInWei = storageCltrzd.mul(new web3Utils.BN(1e18.toString())).div(bn1024);
       const value = new web3Utils.BN(tx.value);
-      const cost = gasPrice.mul(gas).add(value);
+      const cost = gasPrice.mul(gas).add(value).add(storageCltrzdInWei);
 
       data.gasPrice = web3Utils.fromWei(gasPrice, "gwei");
       data.gas = gas.toString(10);
+      data.storageCltrzdInEth = web3Utils.fromWei(storageCltrzdInWei, "ether");
       data.from = tx.from;
       data.value = web3Utils.fromWei(value, "ether");
       data.cost = web3Utils.fromWei(cost, "ether");

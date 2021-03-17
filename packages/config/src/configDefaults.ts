@@ -211,6 +211,7 @@ export const configProps = ({
         const options = configObject.network_config;
         options.verboseRpc = configObject.verboseRpc;
 
+        
         return Provider.create(options);
       },
       set() {

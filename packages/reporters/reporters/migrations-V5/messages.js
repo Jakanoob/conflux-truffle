@@ -279,6 +279,7 @@ class MigrationsMessages {
           `   > ${"balance:".padEnd(20)} ${data.balance}\n` +
           `   > ${"gas used:".padEnd(20)} ${self.decAndHex(data.gas)}\n` +
           `   > ${"gas price:".padEnd(20)} ${data.gasPrice} gwei\n` +
+          `   > ${"storage collateralized:".padEnd(20)} ${data.storageCltrzdInEth} ETH\n` +
           `   > ${"value sent:".padEnd(20)} ${data.value} ETH\n` +
           `   > ${"total cost:".padEnd(20)} ${data.cost} ETH\n`;
 
