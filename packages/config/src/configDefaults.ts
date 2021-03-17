@@ -204,7 +204,6 @@ export const configProps = ({
     },
     provider: {
       get() {
-        // console.log("get provider with network",configObject.network);
         if (!configObject.network) {
           return null;
         }

@@ -10,7 +10,6 @@ export function writeArtifact(
 ) {
   completeArtifact.updatedAt = new Date().toISOString();
   Object.keys(completeArtifact.networks).forEach(networkId => {
-    // console.log("deepFormatAddress networkId",networkId)
     format.deepFormatAddress(
       completeArtifact.networks[networkId],
       Number.parseInt(networkId)

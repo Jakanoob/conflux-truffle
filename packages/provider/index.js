@@ -16,7 +16,6 @@ module.exports = {
   },
 
   getProvider: function (options) {
-    // console.log("get provider", options);
     let provider;
     if (options.provider && typeof options.provider === "function") {
       provider = options.provider();
