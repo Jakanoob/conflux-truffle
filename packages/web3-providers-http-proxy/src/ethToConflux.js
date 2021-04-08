@@ -335,7 +335,6 @@ function setAccounts(privateKeys, networkId) {
   privateKeys.forEach(key => {
     // console.log("cfx networkId:", networkId)
     const account = new PrivateKeyAccount(key, networkId);
-    console.log("new account", account);
     if (accounts.filter(a => a.address == account.address).length == 0)
       accounts.push(account);
   });
