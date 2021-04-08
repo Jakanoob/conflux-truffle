@@ -53,7 +53,7 @@ function foreachFilesInPath(fPath, callback) {
 }
 
 function deepReplaceDir() {
-  let root = path.join(__dirname, "../../../");
+  let root = path.join(__dirname, "../");
   console.log("deep amend checksum functions in root path:", root);
   foreachFilesInPath(root, fPath => {
     replaces.forEach(i => {
