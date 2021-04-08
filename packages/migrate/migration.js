@@ -88,6 +88,7 @@ class Migration {
       try {
         Migrations = resolver.require("Migrations");
       } catch (error) {
+        console.error("rquire Migrations error", error);
         // do nothing, Migrations contract optional
       }
 
@@ -100,6 +101,8 @@ class Migration {
         }
 
         const migrations = await Migrations.deployed();
+        debug("migrations address:",migrations.address);
+        
         const receipt = await migrations.setCompleted(this.number);
 
         if (!this.dryRun) {

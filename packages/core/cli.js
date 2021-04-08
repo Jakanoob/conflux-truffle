@@ -11,6 +11,7 @@ const analytics = require("./lib/services/analytics");
 const version = require("./lib/version");
 const versionInfo = version.info();
 const XRegExp = require("xregexp");
+const debug = require("debug")("core");
 
 // pre-flight check: Node version compatibility
 const minimumNodeVersion = "10.9.0";
@@ -111,7 +112,7 @@ command
           : "(unbundled) " + versionInfo.core
       });
       // Bubble up all other unexpected errors.
-      console.log(error.stack || error.message || error.toString());
+      debug("run command error:",error.stack || error.message || error.toString());
       version.logTruffleAndNode(options.logger);
     };
     process.exit(1);

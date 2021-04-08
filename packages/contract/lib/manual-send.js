@@ -7,7 +7,7 @@ const { formatters } = require("web3-core-helpers"); //used for reproducing web3
 //(it's still more manual than using web3)
 async function sendTransactionManual(web3, params, promiEvent) {
   debug("executing manually!");
-  params = format.formatTxHexAddress(params);
+  // params = format.formatTxHexAddress(params);
   //set up ethers provider
   const ethersProvider = new ethers.providers.Web3Provider(
     web3.currentProvider
@@ -99,7 +99,7 @@ function setUpParameters(params, web3) {
   //also, it insists "from" be kept separate
   const { from } = transaction;
   delete transaction.from;
-  return { transaction, from }
+  return { transaction, from };
 }
 
 //translate the receipt to web3 format by converting BigNumbers
@@ -116,4 +116,4 @@ function translateReceipt(receipt) {
 
 module.exports = {
   sendTransactionManual
-}
+};

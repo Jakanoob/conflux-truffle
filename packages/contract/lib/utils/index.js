@@ -18,6 +18,9 @@ const allowedTxParams = new Set([
   "overwrite",
   "storageLimit",
   "epochHeight",
+  "overwrite",
+  "storageLimit",
+  "epochHeight",
   "chainId"
 ]);
 

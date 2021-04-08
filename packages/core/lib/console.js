@@ -13,22 +13,6 @@ const fse = require("fs-extra");
 const path = require("path");
 const EventEmitter = require("events");
 const spawnSync = require("child_process").spawnSync;
-const { format, confluxUtil } = require("web3-providers-http-proxy");
-// var util = require("util");
-
-function getWarpWriter(originWriter) {
-  return function (obj) {
-    if(obj && obj.constructor && obj.constructor.name && obj.constructor.name.indexOf("Error")>-1 ){
-      return originWriter(obj);
-    }
-
-    if (format.isContainHexAddress(obj) ) {
-      obj = confluxUtil.deepClone(obj);
-      obj = format.deepFormatAddress(obj, this.web3.cfx.networkId);
-    }
-    return originWriter(obj);
-  };
-};
 
 
 const processInput = input => {
@@ -81,9 +65,6 @@ class Console extends EventEmitter {
         prompt: "cfxtruffle(" + this.options.network + ")> ",
         eval: this.interpret.bind(this),
       });
-      
-      // const originWriter = this.repl.writer;
-      this.repl.writer = getWarpWriter(this.repl.writer).bind(this);
 
       let accounts;
       try {

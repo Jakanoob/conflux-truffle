@@ -75,7 +75,7 @@ const execute = {
       params = processedValues.params;
     }
 
-    params = format.formatTxHexAddress(params);
+    // params = format.formatTxHexAddress(params);
     const network = await constructor.detectNetwork();
     return { args, params, network };
   },
@@ -133,8 +133,8 @@ const execute = {
           args = format.deepFormatHexAddress(args);
           let result;
 
-          params.to =  format.formatHexAddress(address);
-
+          params.to = address;
+          // console.log("call params:",params);
           promiEvent.eventEmitter.emit("execute:call:method", {
             fn: fn,
             args: args,
@@ -165,6 +165,7 @@ const execute = {
    * @return {PromiEvent}          Resolves a transaction receipt (via the receipt handler)
    */
   send: function (fn, methodABI, address) {
+
     const constructor = this;
     const web3 = constructor.web3;
 
@@ -180,8 +181,9 @@ const execute = {
             promiEvent: promiEvent,
             params: params
           };
-
-          params.to = format.formatHexAddress(address);
+          debug("send args:", args);
+          debug("send params:", params);
+          params.to = address;
           params.data = fn ? fn(...args).encodeABI() : params.data;
 
           promiEvent.eventEmitter.emit("execute:send:method", {
@@ -536,7 +538,7 @@ const execute = {
   sendTransaction: function (web3, params, promiEvent, context) {
     //first off: if we don't need the debugger, let's not risk any errors on our part,
     //and just have web3 do everything
-    params = format.formatTxHexAddress(params);
+    // params = format.formatTxHexAddress(params);
     if (!promiEvent || !promiEvent.debug) {
       const deferred = web3.eth.sendTransaction(params);
       handlers.setup(deferred, context);

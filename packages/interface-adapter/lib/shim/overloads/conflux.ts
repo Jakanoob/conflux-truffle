@@ -2,6 +2,7 @@ import { Web3Shim } from "..";
 import cfxsdk from "js-conflux-sdk";
 // @ts-ignore
 import { ethToConflux, HttpProvider } from "web3-providers-http-proxy";
+const debug = require("debug")("interface-adapter:conflux.ts");
 
 // We simply return plain ol' Web3.js
 export const ConfluxDefinition = {
@@ -23,7 +24,7 @@ const overrides = {
       // logger:console
     });
     // @ts-ignore
-    cfx.updateNetworkId().catch(console.error);
+    cfx.updateNetworkId().catch(debug);
 
     // @ts-ignore
     web3.cfx = cfx;

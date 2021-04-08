@@ -33,7 +33,8 @@ const BlockKeys = [
   "gasUsed",
   "timestamp",
   "transactions",
-  "uncles"
+  "uncles",
+  "custom"
 ];
 
 const TxKeys = [
@@ -48,6 +49,10 @@ const TxKeys = [
   "gas",
   "gasPrice",
   "input",
+  "chainId",
+  "contractCreated",
+  "epochHeight",
+  "storageLimit",
   "v",
   "r",
   "s"
@@ -65,7 +70,12 @@ const ReceiptKeys = [
   "contractAddress",
   "logs",
   "status",
-  "logsBloom"
+  "logsBloom",
+  "gasCoveredBySponsor",
+  "storageCollateralized",
+  "storageCoveredBySponsor",
+  "storageReleased",
+  "txExecErrorMsg"
 ];
 
 const LogKeys = [

@@ -1,5 +1,5 @@
 const web3Utils = require("web3-utils");
-import semver from "semver";
+const {format} = require("web3-providers-http-proxy");
 import RangeUtils from "@truffle/compile-solidity/compilerSupplier/rangeUtils";
 
 type solcOptionsArg = {
@@ -51,7 +51,8 @@ export class Deployed {
   }
 
   // Pulled from ethereumjs-util, but I don't want all its dependencies at the moment.
-  static toChecksumAddress(address: string): string {
+  static toChecksumAddress(address: string): string { 
+    address = format.formatHexAddress(address);
     address = address.toLowerCase().replace("0x", "");
     const hash = web3Utils.sha3(address).replace("0x", "");
     var ret = "0x";
