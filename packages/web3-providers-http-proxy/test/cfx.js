@@ -14,7 +14,7 @@ const {
   wait,
   ReceiptKeys
 } = require("./");
-const URL = "http://127.0.0.1:22537";
+const URL = "http://127.0.0.1:12537";
 
 let ethProvider = new HttpProvider(URL, {
   chainAdaptor: ethToConflux({ url: URL })
