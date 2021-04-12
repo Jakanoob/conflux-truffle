@@ -9,12 +9,6 @@ export function writeArtifact(
   outputPath: string
 ) {
   completeArtifact.updatedAt = new Date().toISOString();
-  // Object.keys(completeArtifact.networks).forEach(networkId => {
-  //   format.deepFormatAddress(
-  //     completeArtifact.networks[networkId],
-  //     Number.parseInt(networkId)
-  //   );
-  // });
   fse.writeFileSync(
     outputPath,
     JSON.stringify(completeArtifact, null, 2),
