@@ -112,7 +112,7 @@ command
           : "(unbundled) " + versionInfo.core
       });
       // Bubble up all other unexpected errors.
-      debug("run command error:",error.stack || error.message || error.toString());
+      console.log(error.stack || error.message || error.toString());
       version.logTruffleAndNode(options.logger);
     };
     process.exit(1);
