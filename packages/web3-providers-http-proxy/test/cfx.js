@@ -59,10 +59,12 @@ describe("CFX get RPCs", function() {
 
   describe("#cfx_getBlockByNumber", function() {
     it("should getBlockByNumber", async function() {
-      let payload = genRPCPayload("eth_getBlockByNumber", ["latest", false]);
-      let block = await promiseSend(payload);
-      block.should.be.a("object");
-      block.should.have.keys(BlockKeys);
+      ["latest",10].forEach(async epoch=>{
+        let payload = genRPCPayload("eth_getBlockByNumber", [epoch, false]);
+        let block = await promiseSend(payload);
+        block.should.be.a("object");
+        block.should.have.keys(BlockKeys);
+      });
     });
   });
 
@@ -258,11 +260,14 @@ describe("CFX contract relate RPCs", function() {
     // console.log('The contract address: ', contractAddress);
   });
 
+  // miss check logs response fields
   describe("#cfx_getLogs", function() {
     it("should get logs", async function() {
       let payload = genRPCPayload("eth_getLogs", [
         {
-          address: contractAddress
+          address: contractAddress,
+          fromBlock: 1,
+          toBlock:10
         }
       ]);
       let logs = await promiseSend(payload);

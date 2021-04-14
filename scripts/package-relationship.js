@@ -61,7 +61,7 @@ function genRelationShips(targets) {
 
 }
 
-let targets = ["@truffle/artifactor", "@truffle/contract", "@truffle/core", "@truffle/interface-adapter", "@truffle/provider", "@truffle/reporters", "conflux-truffle", "web3-providers-http-proxy"];
+let targets = ["web3","@types/web3","@truffle/artifactor", "@truffle/contract", "@truffle/core", "@truffle/interface-adapter", "@truffle/provider", "@truffle/reporters", "conflux-truffle", "web3-providers-http-proxy"];
 let result = genRelationShips(targets);
 let needFork = getDistints([...result.map(r => r.host), ...result.map(r => r.dep)]);
 console.log(result);

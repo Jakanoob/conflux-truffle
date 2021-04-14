@@ -49,12 +49,15 @@ class Web3HttpProviderProxy extends Web3HttpProvider {
         return;
       }
 
-      debug(`\nsend rpc:`, _adapted.adaptedPayload);
+      // debug(`\nsend rpc:`, _adapted.adaptedPayload);
       superSend(_adapted.adaptedPayload, function (err, result) {
         let adaptorResult = result && _adapted.adaptedOutputFn(result);
-        debug("adaptor rpc response:", adaptorResult, "\n");
+        debug("adaptor rpc:", util.inspect( {
+          request: _adapted.adaptedPayload,
+          response: adaptorResult
+        },{depth:null}), "\n");
 
-        if (adaptorResult.error && adaptorResult.error.message) {
+        if (adaptorResult && adaptorResult.error && adaptorResult.error.message) {
           adaptorResult.error.message += `\n> adapted payload is: ${JSON.stringify(
             _adapted.adaptedPayload
           )}`;

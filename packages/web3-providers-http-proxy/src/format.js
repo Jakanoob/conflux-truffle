@@ -16,12 +16,16 @@ function formatCommonInput(params, cfx, txIndex = 0, epochIndex = 1) {
     if (params[ti].gas && Number.isInteger(params[ti].gas)) {
       params[ti].gas = numToHex(params[ti].gas);
     }
+
     if (params[ti].gasPrice && Number.isInteger(params[ti].gasPrice)) {
       params[ti].gasPrice = numToHex(params[ti].gasPrice);
     }
+
     if (params[ti].from)
       params[ti].from = format.address(params[ti].from, networkId);
-    if (params[ti].to) params[ti].to = formatAddress(params[ti].to, networkId);
+
+    if (params[ti].to)
+      params[ti].to = formatAddress(params[ti].to, networkId);
   }
   formatEpochOfParams(params, epochIndex);
   return params;
@@ -37,7 +41,7 @@ function formatBlock(block) {
   // extraData?
   // gasUsed?
   block.uncles = block.refereeHashes; // check?
-  block.miner = formatHexAddress(block.miner);
+  // block.miner = formatHexAddress(block.miner);
   // format tx object
   if (
     block.tranactions &&
@@ -73,8 +77,8 @@ function formatBlock(block) {
 function formatTransaction(tx) {
   // blockNumber?   TODO maybe cause big problem
   tx.input = tx.data;
-  tx.from = formatHexAddress(tx.from);
-  tx.to = formatHexAddress(tx.to);
+  // tx.from = formatHexAddress(tx.from);
+  // tx.to = formatHexAddress(tx.to);
 
   delKeys(tx, [
     // "chainId",
@@ -89,6 +93,7 @@ function formatTransaction(tx) {
 }
 
 async function formatTxParams(cfx, options) {
+  // console.log("formatTxParams",options);
   if (options.value === undefined) {
     options.value = "0x0";
   }
@@ -113,6 +118,19 @@ async function formatTxParams(cfx, options) {
     options.storageLimit = cfx.defaultStorageLimit;
   }
 
+  if (options.epochHeight === undefined) {
+    options.epochHeight = await cfx.getEpochNumber();
+  }
+
+  if (options.chainId === undefined) {
+    options.chainId = cfx.defaultChainId;
+  }
+
+  if (options.chainId === undefined) {
+    const status = await cfx.getStatus();
+    options.chainId = status.chainId;
+  }
+
   if (options.gas === undefined || options.storageLimit === undefined) {
     const {
       gasUsed,
@@ -128,19 +146,6 @@ async function formatTxParams(cfx, options) {
     }
   }
 
-  if (options.epochHeight === undefined) {
-    options.epochHeight = await cfx.getEpochNumber();
-  }
-
-  if (options.chainId === undefined) {
-    options.chainId = cfx.defaultChainId;
-  }
-
-  if (options.chainId === undefined) {
-    const status = await cfx.getStatus();
-    options.chainId = status.chainId;
-  }
-
   const hasAccount = !cfx.getAccount(options.from);
   if (hasAccount) {
     options = format.callTxAdvance(cfx.networkId)(options);
@@ -149,6 +154,9 @@ async function formatTxParams(cfx, options) {
 }
 
 function formatEpoch(tag) {
+  if (Number.isInteger(tag))
+    return numToHex(tag);
+
   return EPOCH_MAP[tag] || tag;
 }
 
@@ -207,7 +215,7 @@ function formatHexAddress(address) {
   return address;
 }
 
-function repleacEthKeywords(data) { 
+function repleacEthKeywords(data) {
   if (typeof data === "string") {
     data = data.replace(/(^| )eth(\n|$| )/g, "$1cfx$2");
     data = data.replace(/(^| )ETH(\n|$| )/g, "$1CFX$2");

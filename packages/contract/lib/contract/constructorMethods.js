@@ -61,11 +61,11 @@ module.exports = Contract => ({
   },
 
   async at(address) {
-    address = format.formatHexAddress(address);
+    // address = format.formatHexAddress(address);
     if (
       address == null ||
-      typeof address !== "string" ||
-      address.length !== 42
+      typeof address !== "string" 
+      // ||address.length !== 42
     ) {
       throw new Error(
         `Invalid address passed to ${this.contractName}.at(): ${address}`
@@ -233,7 +233,7 @@ module.exports = Contract => ({
 
     const temp = function TruffleContract() {
       this.constructor = temp;
-      format.deepFormatHexAddress(arguments);
+      // format.deepFormatHexAddress(arguments);
       return Contract.apply(this, arguments);
     };
 

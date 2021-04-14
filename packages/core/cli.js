@@ -11,6 +11,7 @@ const analytics = require("./lib/services/analytics");
 const version = require("./lib/version");
 const versionInfo = version.info();
 const XRegExp = require("xregexp");
+const debug = require("debug")("core");
 
 // pre-flight check: Node version compatibility
 const minimumNodeVersion = "10.9.0";

@@ -2,7 +2,11 @@
 # Change Log
 
 ## v1.0.0
-support addresses format follow cip37
+1. support addresses format follow cip37
+2. upgrade js-conflux-sdk version to v1.5.11
+3. sync new features with truffle
+4. display storage usage after contract deploy successfully
+5. support `cfx` and `cfxsdk` in context of commands `cfxtruffle console`, `cfxtruffle test`, `cfxtruffle execute`
 
 ## v0.0.8
 support contract method `call` and `send` with options `storageLimit`,`epochHeight`,`chainId`

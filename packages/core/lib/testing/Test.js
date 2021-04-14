@@ -268,6 +268,8 @@ const Test = {
   }) {
     global.interfaceAdapter = interfaceAdapter;
     global.web3 = web3;
+    global.cfx = interfaceAdapter.web3.cfx;
+    global.cfxsdk = interfaceAdapter.web3.cfxsdk;
     global.assert = chai.assert;
     global.expect = chai.expect;
     global.artifacts = {
