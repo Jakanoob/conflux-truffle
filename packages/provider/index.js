@@ -101,8 +101,7 @@ module.exports = {
         if (!isConflux){
           const errMsg = `\nUnsupport network type ${networkType}, only support conflux-rust node\n`;
           throw errMsg;
-        }
-          
+        } 
 
         let payload = {
           id: Date.now(),
