@@ -243,16 +243,12 @@ const bridge = {
   eth_sign: {
     method: "sign",
     send: function (orignSend, payload, callback) {
-      // console.trace("execute sign send ", payload, "callback:", callback.toString());
       payload = deepClone(payload);
       const address = payload.params[0];
       const message = payload.params[1];
       const account = getAccount(address);
-      // console.log("get account done", account);
 
       if (account) {
-        // console.log("start sign by local");
-        // let signed;
         const isAddressMatched =
           message.from && message.from.toLowerCase() == address;
         let signed = isAddressMatched
@@ -264,26 +260,22 @@ const bridge = {
           result: signed,
           id: payload.id
         };
-        // console.log("sign callback ", response);
         callback(null, response);
       } else {
-        // console.log("start sign by rpc");
-        // let newParams = [message, address, DEFAULT_PASSWORD];
         let newParams = [message, address];
         payload.method = "sign";
         payload.params = newParams;
-        // debug("sign orign send ", payload);
         orignSend(payload, callback);
       }
-      // console.log("sign adapt send done");
     }
   }
 };
 
 function ethToConflux(options) {
   // it's better to use class
+  let privateKeys = formatPrivateKeys(options.privateKeys);
   setHost(options.url || `http://${options.host}:${options.port}`).then(
-    () => setAccounts(options.privateKeys, cfx.networkId)
+    () => setAccounts(privateKeys, cfx.networkId)
   ).catch(e => debug("set host error:", e));
 
   adaptor = async function (payload) {
@@ -325,13 +317,19 @@ function ethToConflux(options) {
 
 // helper methods===============================================
 
-function setAccounts(privateKeys, networkId) {
-  if (!privateKeys) return;
+function formatPrivateKeys(privateKeys){
+  if (privateKeys == undefined) return;
 
   if (typeof privateKeys == "string") {
     privateKeys = [privateKeys];
   }
+  if (!Array.isArray( privateKeys)) {
+    throw new Error("PrivateKeys must be string or array");
+  }
+  return privateKeys.map(format.formatPrivateKey);
+}
 
+function setAccounts(privateKeys, networkId) {
   privateKeys.forEach(key => {
     // console.log("cfx networkId:", networkId)
     const account = new PrivateKeyAccount(key, networkId);

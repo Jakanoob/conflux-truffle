@@ -9,6 +9,7 @@ const override = require("./override");
 const reformat = require("./reformat");
 const { sendTransactionManual } = require("./manual-send");
 const { format } = require("web3-providers-http-proxy");
+const { detectNetworkId} = require("web3-providers-http-proxy/src/confluxUtil");
 
 const execute = {
   // -----------------------------------  Helpers --------------------------------------------------
@@ -149,6 +150,8 @@ const execute = {
             result,
             methodABI.outputs
           );
+          let networkId = await detectNetworkId();
+          result = format.deepFormatAddress(result,networkId);
           return promiEvent.resolve(result);
         })
         .catch(promiEvent.reject);

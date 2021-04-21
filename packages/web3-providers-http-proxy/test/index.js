@@ -13,6 +13,21 @@ function genRPCPayload(method, params = []) {
   };
 }
 
+
+function promiseSend(providerProxy, payload) {
+  return new Promise(function(resolve, reject) {
+    providerProxy.send(payload, function(err, response) {
+      if (err || response.error) {
+        console.error(response.error, payload.method);
+        reject(err || response.error);
+      } else {
+        resolve(response.result);
+      }
+    });
+  });
+}
+
+
 const BlockKeys = [
   "number",
   "hash",
@@ -98,6 +113,7 @@ async function wait(second = 10) {
 module.exports = {
   createRpcReq,
   genRPCPayload,
+  promiseSend,
   BlockKeys,
   TxKeys,
   DefalutValue: "0x100",
