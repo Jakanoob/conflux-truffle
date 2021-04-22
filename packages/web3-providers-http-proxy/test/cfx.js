@@ -1,4 +1,4 @@
-const { HttpProvider, ethToConflux } = require("../src/");
+const { Web3HttpProviderProxy, ethToConflux } = require("../src/");
 // eslint-disable-next-line no-unused-vars
 const should = require("chai").should();
 const {
@@ -16,7 +16,7 @@ const {
 } = require("./");
 const URL = "http://127.0.0.1:12537";
 
-let ethProvider = new HttpProvider(URL, {
+let ethProvider = new Web3HttpProviderProxy(URL, {
   chainAdaptor: ethToConflux({ url: URL })
 });
 

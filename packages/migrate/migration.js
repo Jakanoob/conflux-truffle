@@ -229,7 +229,7 @@ class Migration {
     const resolver = new ResolverIntercept(options.resolver);
 
     // Initial context.
-    const context = { web3, interfaceAdapter, config: this.config };
+    const context = { web3, interfaceAdapter, config: this.config, cfx: web3.cfx, cfxsdk: web3.cfxsdk };
 
     const deployer = new Deployer({
       logger,

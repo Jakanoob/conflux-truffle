@@ -12,6 +12,7 @@ function delKeys(object, keys) {
   }
 }
 
+
 function deepClone(obj, hash = new WeakMap()) {
   return clonedeep(obj);
   if (Object(obj) !== obj) return obj; // primitives
@@ -37,6 +38,16 @@ function deepClone(obj, hash = new WeakMap()) {
   );
 }
 
+let cfxDefaults = {
+  gasPrice:1,
+};
+
+// default values in truffle global config
+let truffleDefaults = {
+  gas: 6721975, 
+  gasPrice: 20000000000, 
+};
+
 module.exports = {
   emptyFn: origin => origin,
 
@@ -47,5 +58,7 @@ module.exports = {
   numToHex: num => `0x${num.toString(16)}`,
   deepClone,
   setNull,
-  delKeys
+  delKeys,
+  truffleDefaults,
+  cfxDefaults
 };

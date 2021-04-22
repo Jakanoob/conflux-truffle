@@ -1,4 +1,4 @@
-const { numToHex, setNull, delKeys } = require("./util");
+const { numToHex, setNull, delKeys, truffleDefaults, cfxDefaults } = require("./util");
 const { format } = require("js-conflux-sdk");
 const debug = require("debug")("web3-providers-http-proxy:format");
 
@@ -93,7 +93,6 @@ function formatTransaction(tx) {
 }
 
 async function formatTxParams(cfx, options) {
-  // console.log("formatTxParams",options);
   if (options.value === undefined) {
     options.value = "0x0";
   }
@@ -102,15 +101,16 @@ async function formatTxParams(cfx, options) {
     options.nonce = await cfx.getNextNonce(options.from);
   }
 
-  if (options.gasPrice === undefined) {
+  if (options.gasPrice === undefined || options.gasPrice === numToHex(truffleDefaults.gasPrice)) {
     options.gasPrice = cfx.defaultGasPrice;
   }
+
   if (options.gasPrice === undefined) {
     const recommendGas = Number.parseInt(await cfx.getGasPrice());
-    options.gasPrice = numToHex(recommendGas || 1); // MIN_GAS_PRICE
+    options.gasPrice = numToHex(recommendGas || cfxDefaults.gasPrice); // MIN_GAS_PRICE
   }
 
-  if (options.gas === undefined) {
+  if (options.gas === undefined || options.gas === numToHex(truffleDefaults.gas)) {
     options.gas = cfx.defaultGas;
   }
 
@@ -133,12 +133,12 @@ async function formatTxParams(cfx, options) {
 
   if (options.gas === undefined || options.storageLimit === undefined) {
     const {
-      gasUsed,
+      gasLimit,
       storageCollateralized
     } = await cfx.estimateGasAndCollateral(options);
 
     if (options.gas === undefined) {
-      options.gas = gasUsed;
+      options.gas = gasLimit;
     }
 
     if (options.storageLimit === undefined) {
@@ -196,6 +196,17 @@ function formatEpochOfParams(params, index) {
 //         return cfxAddr;
 //     }
 // }
+
+function formatPrivateKey(value) {
+  if (/0x[A-F0-9]{64}/ig.test(value)) {
+    return value;
+  }
+  if (/[A-F0-9]{64}/ig.test(value)) {
+    return `0x${value}`;
+  }
+  throw new Error(`could not fromat ${value} to private key`);
+}
+
 
 function formatAddress(stringWithAddr, networkId) {
   if (!stringWithAddr) return stringWithAddr;
@@ -329,7 +340,8 @@ module.exports = {
   formatTxParams,
   formatEpoch,
   formatEpochOfParams,
-  formatAddress: formatAddress,
+  formatAddress,
+  formatPrivateKey,
   formatHexAddress,
   formatTxHexAddress,
   deepFormatAddress: (obj, networkId) => deepFormatAnyAddress(obj, networkId),

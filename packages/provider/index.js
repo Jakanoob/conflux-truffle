@@ -4,6 +4,7 @@ const { createInterfaceAdapter } = require("@truffle/interface-adapter");
 const wrapper = require("./wrapper");
 const DEFAULT_NETWORK_CHECK_TIMEOUT = 5000;
 const providerProxy = require("web3-providers-http-proxy");
+const { promisify } = require('util');
 
 module.exports = {
   wrap: function (provider, options) {
@@ -17,22 +18,31 @@ module.exports = {
 
   getProvider: function (options) {
     let provider;
+    let isConflux = !options.type || options.type == "conflux";
     if (options.provider && typeof options.provider === "function") {
       provider = options.provider();
     } else if (options.provider) {
       provider = options.provider;
     } else if (options.websockets || /^wss?:\/\//.test(options.url)) {
-      provider = new Web3.providers.WebsocketProvider(
+      if (isConflux) {
+        return new providerProxy.Web3WsProviderProxy(
+          options.url || `http://${options.host}:${options.port}`, {
+          keepAlive: false,
+          chainAdaptor: providerProxy.ethToConflux(options)
+        });
+      }
+      return new Web3.providers.WebsocketProvider(
         options.url || "ws://" + options.host + ":" + options.port
       );
-    } else if (!options || !options.type || options.type == "conflux") {
-      provider = new providerProxy.HttpProvider(
-        options.url || `http://${options.host}:${options.port}`, {
-        keepAlive: false,
-        chainAdaptor: providerProxy.ethToConflux(options)
-      });
     } else {
-      provider = new Web3.providers.HttpProvider(
+      if (isConflux) {
+        return new providerProxy.Web3HttpProviderProxy(
+          options.url || `http://${options.host}:${options.port}`, {
+          keepAlive: false,
+          chainAdaptor: providerProxy.ethToConflux(options)
+        });
+      }
+      return new Web3.providers.HttpProvider(
         options.url || `http://${options.host}:${options.port}`,
         { keepAlive: false }
       );
@@ -70,6 +80,7 @@ module.exports = {
             await interfaceAdapter.getBlockNumber();
             clearTimeout(noResponseFromNetworkCall);
             clearTimeout(networkCheck);
+            await nodeVersionCheck();
             return resolve(true);
           } catch (error) {
             console.log(
@@ -84,6 +95,33 @@ module.exports = {
           networkCheck();
         }, networkCheckDelay);
       })();
+
+      async function nodeVersionCheck() {
+        isConflux = !networkType || networkType === "conflux";
+        if (!isConflux){
+          const errMsg = `\nUnsupport network type ${networkType}, only support conflux-rust node\n`;
+          throw errMsg;
+        } 
+
+        let payload = {
+          id: Date.now(),
+          jsonrpc: "2.0",
+          method: "cfx_clientVersion",
+        };
+
+        pSend = promisify(provider.send);
+        let response = await pSend(payload);
+        let version = response && response.result;
+
+        let matchs = /[^d]*(\d\.\d\.\d)[^d]*/ig.exec(version);
+        if (matchs && matchs[1] > "1.1.0") {
+          return true;
+        }
+
+        const errMsg = `\nUnsupport conflux-rust version ${version}, ` +
+          `please use conflux-rust version large than 1.1.0\n`;
+        throw errMsg;
+      };
     });
   },
 };

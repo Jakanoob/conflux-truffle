@@ -6,7 +6,11 @@
 2. upgrade js-conflux-sdk version to v1.5.11
 3. sync new features with truffle
 4. display storage usage after contract deploy successfully
-5. support `cfx` and `cfxsdk` in context of commands `cfxtruffle console`, `cfxtruffle test`, `cfxtruffle execute`
+5. support `cfx` and `cfxsdk` in context of commands `cfxtruffle console`, `cfxtruffle test`, `cfxtruffle execute`, `cfxtruffle migrate`, `cfxtruffle deploy`
+6. auto format privateKeys when it's not start with '0x'
+7. support connecting websocket node
+8. report error when connected conflux-rust verison small than v1.1.1 or not conflux node
+9. estimate gas and obtain gasPrice instead of using trffle global default value when they are not setted in config
 
 ## v0.0.8
 support contract method `call` and `send` with options `storageLimit`,`epochHeight`,`chainId`
