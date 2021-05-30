@@ -192,7 +192,7 @@ cfxtruffle now support deploy contract to a remote node, the only work to do is 
 
 ```js
 development: {
-    host: "test.confluxrpc.org",
+    host: "test.confluxrpc.com",
     port: 80,
     network_id: "*",
     type: "conflux",
