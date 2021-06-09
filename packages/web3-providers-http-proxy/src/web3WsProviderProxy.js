@@ -1,7 +1,7 @@
 const WebsocketProvider = require("web3-providers-ws");
 const defaultAdaptor = require("./util").defaultAdaptor;
 const debug = require("debug")("Web3WsProviderProxy");
-const {send} = require('./lib');
+const { send } = require('./lib');
 
 class Web3WsProviderProxy extends WebsocketProvider {
     constructor(url, options) {
@@ -16,7 +16,7 @@ class Web3WsProviderProxy extends WebsocketProvider {
     }
 
     send(payload, callback) {
-        send.call(this,payload,callback);
+        send.call(this, payload, callback);
     }
 }
 

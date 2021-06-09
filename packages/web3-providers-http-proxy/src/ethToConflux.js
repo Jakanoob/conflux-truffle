@@ -4,7 +4,7 @@ const { PrivateKeyAccount, Conflux } = require("js-conflux-sdk");
 const format = require("./format");
 
 let cfx = undefined;
-const accounts = [];
+var accounts;
 
 const bridge = {
   eth_blockNumber: {
@@ -272,13 +272,15 @@ const bridge = {
 };
 
 function ethToConflux(options) {
+  // console.log("ethToConflux in");
   // it's better to use class
-  let privateKeys = formatPrivateKeys(options.privateKeys);
-  setHost(options.url || `http://${options.host}:${options.port}`).then(
-    () => setAccounts(privateKeys, cfx.networkId)
-  ).catch(e => debug("set host error:", e));
 
+  setHost(options.url || `http://${options.host}:${options.port}`);
   adaptor = async function (payload) {
+
+    await setNetowrkId();
+    await setAccounts(options.privateKeys, cfx.networkId);
+
     // clone new one to avoid change old payload
     const oldPayload = payload;
     payload = deepClone(payload);
@@ -317,25 +319,23 @@ function ethToConflux(options) {
 
 // helper methods===============================================
 
-function formatPrivateKeys(privateKeys){
+function formatPrivateKeys(privateKeys) {
   if (privateKeys == undefined) return;
 
   if (typeof privateKeys == "string") {
     privateKeys = [privateKeys];
   }
-  if (!Array.isArray( privateKeys)) {
+  if (!Array.isArray(privateKeys)) {
     throw new Error("PrivateKeys must be string or array");
   }
   return privateKeys.map(format.formatPrivateKey);
 }
 
 function setAccounts(privateKeys, networkId) {
-  privateKeys.forEach(key => {
-    // console.log("cfx networkId:", networkId)
-    const account = new PrivateKeyAccount(key, networkId);
-    if (accounts.filter(a => a.address == account.address).length == 0)
-      accounts.push(account);
-  });
+  if (!accounts) {
+    accounts = formatPrivateKeys(privateKeys)
+      .map(k => new PrivateKeyAccount(k, networkId));
+  }
 }
 
 function getAccount(address) {
@@ -344,15 +344,22 @@ function getAccount(address) {
   return filterd.length ? filterd[0] : undefined;
 }
 
-async function setHost(host) {
-  debug("set host:", host);
-  cfx = new Conflux({
-    url: host,
-    // logger:console
-  });
-  let { networkId } = await cfx.getStatus();
-  cfx.networkId = networkId;
-  cfx.getAccount = getAccount;
+function setHost(host) {
+  if (!cfx) {
+    debug("set host:", host);
+    cfx = new Conflux({
+      url: host,
+      // logger:console
+    });
+  }
+}
+
+async function setNetowrkId() {
+  if (!cfx.networkId) {
+    let { networkId } = await cfx.getStatus();
+    cfx.networkId = networkId;
+    cfx.getAccount = getAccount;
+  }
 }
 
 // =============================================================
