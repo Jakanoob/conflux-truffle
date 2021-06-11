@@ -32,8 +32,6 @@
     ]
   },
   "dependencies": {
-    "@confluxfans/contracts": "^0.1.1",
-    "conflux-internal-contracts": "^0.2.3"
   },
   "husky": {
     "hooks": {
