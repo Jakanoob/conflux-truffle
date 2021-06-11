@@ -7,18 +7,18 @@ const replaces = [
     new: "var inputAddressFormatter = function (address)  { return address",
     filePattern: /.*node_modules\/web3-core-helpers\/(src|lib)\/formatters\.js/g
   },
-  // {
-  //   old:
-  //     "    if(options.data && !utils.isHex(options.data)) {\n" +
-  //     "        throw new Error('The data field must be HEX encoded data.');\n" +
-  //     "    }",
+  {
+    old:
+      "    if(options.data && !utils.isHex(options.data)) {\n" +
+      "        throw new Error('The data field must be HEX encoded data.');\n" +
+      "    }",
 
-  //   new:
-  //     "//    if(options.data && !utils.isHex(options.data)) {\n" +
-  //     "//        throw new Error('The data field must be HEX encoded data.');\n" +
-  //     "//    }",
-  //   filePattern: /.*node_modules\/web3-core-helpers\/src\/formatters\.js/g
-  // },
+    new:
+      "//    if(options.data && !utils.isHex(options.data)) {\n" +
+      "//        throw new Error('The data field must be HEX encoded data.');\n" +
+      "//    }",
+    filePattern: /.*node_modules\/web3-core-helpers\/src\/formatters\.js/g
+  },
   {
     old: "var toChecksumAddress = function (address) {",
     new: "var toChecksumAddress = function (address)  { return address",

@@ -9,7 +9,7 @@ const override = require("./override");
 const reformat = require("./reformat");
 const { sendTransactionManual } = require("./manual-send");
 const { format } = require("web3-providers-http-proxy");
-const { detectNetworkId} = require("web3-providers-http-proxy/src/confluxUtil");
+const { detectNetworkId } = require("web3-providers-http-proxy/src/confluxUtil");
 
 const execute = {
   // -----------------------------------  Helpers --------------------------------------------------
@@ -151,7 +151,7 @@ const execute = {
             methodABI.outputs
           );
           let networkId = await detectNetworkId();
-          result = format.deepFormatAddress(result,networkId);
+          result = format.deepFormatAddress(result, networkId);
           return promiEvent.resolve(result);
         })
         .catch(promiEvent.reject);
@@ -440,7 +440,10 @@ const execute = {
     return function () {
       return execute
         .prepareCall(constructor, methodABI, arguments)
-        .then(res => fn(...res.args).estimateGas(res.params));
+        .then(res => {
+          res.args = format.deepFormatHexAddress(res.args);
+          return fn(...res.args).estimateGas(res.params);
+        });
     };
   },
 
@@ -456,6 +459,7 @@ const execute = {
       return execute
         .prepareCall(constructor, methodABI, arguments)
         .then(res => {
+          res.args = format.deepFormatHexAddress(res.args);
           //clone res.params
           let tx = {};
           for (let key in res.params) {

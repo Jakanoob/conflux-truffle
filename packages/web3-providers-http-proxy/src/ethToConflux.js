@@ -2,9 +2,11 @@ const { emptyFn, deepClone, delKeys } = require("./util");
 const debug = require("debug")("ethToConflux");
 const { PrivateKeyAccount, Conflux } = require("js-conflux-sdk");
 const format = require("./format");
+const { internalContractAddrs } = require("./constants");
 
 let cfx = undefined;
 var accounts;
+
 
 const bridge = {
   eth_blockNumber: {
@@ -59,17 +61,28 @@ const bridge = {
   },
 
   eth_getCode: {
-    method: "cfx_getCode",
-    input: function (params) {
-      format.formatEpochOfParams(params, 1);
-      return params;
-    },
-    output: function (response) {
-      if (response && response.error && response.error.code == -32016) {
-        response.error = null;
-        response.result = "0x";
+    send: function (orignSend, payload, callback) {
+      if (internalContractAddrs.indexOf(format.formatHexAddress(payload.params[0])) > -1) {
+        const response = {
+          jsonrpc: payload.jsonrpc,
+          result: "0x8060",
+          id: payload.id
+        };
+        callback(null, response);
+      } else {
+        payload.method = "cfx_getCode";
+        payload.params[0].address = format.formatAddress(payload.params[0].address, cfx.networkId);
+        format.formatEpochOfParams(payload.params, 1);
+
+        orignSend(payload, function (err, res) {
+          if (res && res.error && res.error.code == -32016) {
+            res.error = null;
+            res.result = "0x";
+          }
+          callback(err, res);
+        });
       }
-      return response;
+
     }
   },
 
@@ -268,7 +281,13 @@ const bridge = {
         orignSend(payload, callback);
       }
     }
+  },
+
+  eth_subscribe: {
+    method: "cfx_subscribe"
   }
+
+
 };
 
 function ethToConflux(options) {
