@@ -27,7 +27,7 @@ function send(payload, callback) {
 
     function execute(_adapted) {
         if (_adapted.adaptedSend)
-            return _adapted.adaptedSend(_this.supersend.bind(_this), payload, wrappedCallback);
+            return _adapted.adaptedSend(_this.superSend.bind(_this), payload, wrappedCallback);
 
         _this.superSend(_adapted.adaptedPayload, function (err, result) {
             let adaptorResult = result && _adapted.adaptedOutputFn(result);

@@ -1,7 +1,7 @@
 const Web3HttpProvider = require("web3-providers-http");
 const defaultAdaptor = require("./util").defaultAdaptor;
 const debug = require("debug")("provider-proxy");
-const {send} = require('./lib');
+const { send } = require('./lib');
 
 class Web3HttpProviderProxy extends Web3HttpProvider {
   constructor(host, options) {

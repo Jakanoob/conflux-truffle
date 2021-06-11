@@ -2,9 +2,11 @@ const { emptyFn, deepClone, delKeys } = require("./util");
 const debug = require("debug")("ethToConflux");
 const { PrivateKeyAccount, Conflux } = require("js-conflux-sdk");
 const format = require("./format");
+const { internalContractAddrs } = require("./constants");
 
 let cfx = undefined;
-const accounts = [];
+var accounts;
+
 
 const bridge = {
   eth_blockNumber: {
@@ -59,17 +61,28 @@ const bridge = {
   },
 
   eth_getCode: {
-    method: "cfx_getCode",
-    input: function (params) {
-      format.formatEpochOfParams(params, 1);
-      return params;
-    },
-    output: function (response) {
-      if (response && response.error && response.error.code == -32016) {
-        response.error = null;
-        response.result = "0x";
+    send: function (orignSend, payload, callback) {
+      if (internalContractAddrs.indexOf(format.formatHexAddress(payload.params[0])) > -1) {
+        const response = {
+          jsonrpc: payload.jsonrpc,
+          result: "0x8060",
+          id: payload.id
+        };
+        callback(null, response);
+      } else {
+        payload.method = "cfx_getCode";
+        payload.params[0].address = format.formatAddress(payload.params[0].address, cfx.networkId);
+        format.formatEpochOfParams(payload.params, 1);
+
+        orignSend(payload, function (err, res) {
+          if (res && res.error && res.error.code == -32016) {
+            res.error = null;
+            res.result = "0x";
+          }
+          callback(err, res);
+        });
       }
-      return response;
+
     }
   },
 
@@ -268,17 +281,25 @@ const bridge = {
         orignSend(payload, callback);
       }
     }
+  },
+
+  eth_subscribe: {
+    method: "cfx_subscribe"
   }
+
+
 };
 
 function ethToConflux(options) {
+  // console.log("ethToConflux in");
   // it's better to use class
-  let privateKeys = formatPrivateKeys(options.privateKeys);
-  setHost(options.url || `http://${options.host}:${options.port}`).then(
-    () => setAccounts(privateKeys, cfx.networkId)
-  ).catch(e => debug("set host error:", e));
 
+  setHost(options.url || `http://${options.host}:${options.port}`);
   adaptor = async function (payload) {
+
+    await setNetowrkId();
+    await setAccounts(options.privateKeys, cfx.networkId);
+
     // clone new one to avoid change old payload
     const oldPayload = payload;
     payload = deepClone(payload);
@@ -317,25 +338,23 @@ function ethToConflux(options) {
 
 // helper methods===============================================
 
-function formatPrivateKeys(privateKeys){
+function formatPrivateKeys(privateKeys) {
   if (privateKeys == undefined) return;
 
   if (typeof privateKeys == "string") {
     privateKeys = [privateKeys];
   }
-  if (!Array.isArray( privateKeys)) {
+  if (!Array.isArray(privateKeys)) {
     throw new Error("PrivateKeys must be string or array");
   }
   return privateKeys.map(format.formatPrivateKey);
 }
 
 function setAccounts(privateKeys, networkId) {
-  privateKeys.forEach(key => {
-    // console.log("cfx networkId:", networkId)
-    const account = new PrivateKeyAccount(key, networkId);
-    if (accounts.filter(a => a.address == account.address).length == 0)
-      accounts.push(account);
-  });
+  if (!accounts) {
+    accounts = formatPrivateKeys(privateKeys)
+      .map(k => new PrivateKeyAccount(k, networkId));
+  }
 }
 
 function getAccount(address) {
@@ -344,15 +363,22 @@ function getAccount(address) {
   return filterd.length ? filterd[0] : undefined;
 }
 
-async function setHost(host) {
-  debug("set host:", host);
-  cfx = new Conflux({
-    url: host,
-    // logger:console
-  });
-  let { networkId } = await cfx.getStatus();
-  cfx.networkId = networkId;
-  cfx.getAccount = getAccount;
+function setHost(host) {
+  if (!cfx) {
+    debug("set host:", host);
+    cfx = new Conflux({
+      url: host,
+      // logger:console
+    });
+  }
+}
+
+async function setNetowrkId() {
+  if (!cfx.networkId) {
+    let { networkId } = await cfx.getStatus();
+    cfx.networkId = networkId;
+    cfx.getAccount = getAccount;
+  }
 }
 
 // =============================================================
