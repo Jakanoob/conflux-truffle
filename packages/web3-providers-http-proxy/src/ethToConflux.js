@@ -174,7 +174,7 @@ const bridge = {
     output: function (response) {
       debug("convert cfx_getStatus response:", response);
       if (response && response.result && response.result.chainId) {
-        response.result = Number.parseInt(response.result.chainId);
+        response.result = "0x" + Number.parseInt(response.result.chainId).toString(16);
       }
       return response;
     }

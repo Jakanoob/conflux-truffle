@@ -1,5 +1,8 @@
 
 # Change Log
+## v1.0.3
+1. return fake code when getCode of internal contract
+2. return hex format chainId for rpc eth_chainId
 ## v1.0.2
 1. optmize getAccounts
 ## v1.0.0

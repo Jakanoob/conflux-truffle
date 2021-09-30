@@ -872,6 +872,13 @@
     exec-sh "^0.3.2"
     minimist "^1.2.0"
 
+"@conflux-dev/conflux-address-js@^1.1.7":
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/@conflux-dev/conflux-address-js/-/conflux-address-js-1.2.1.tgz#22556fe50dd971f5acdc558dcb4302d1d98c08ec"
+  integrity sha512-BlX9ux6EIGRNiXJIrKd+gXAKyNqO3IKq4VF2x975YHfoBu1Zer35yBvd9HLB1Y7RSYBP08j2ch1UNphqqzVrFA==
+  dependencies:
+    jsbi "^3.1.4"
+
 "@discoveryjs/json-ext@^0.5.0":
   version "0.5.2"
   resolved "https://registry.yarnpkg.com/@discoveryjs/json-ext/-/json-ext-0.5.2.tgz#8f03a22a04de437254e8ce8cc84ba39689288752"
@@ -7258,6 +7265,11 @@ commander@^7.0.0:
   resolved "https://registry.yarnpkg.com/commander/-/commander-7.0.0.tgz#3e2bbfd8bb6724760980988fb5b22b7ee6b71ab2"
   integrity sha512-ovx/7NkTrnPuIV8sqk/GjUIIM1+iUQeqA3ye2VNpq9sVoiZsooObWlQy+OPWGI17GDaEoybuAGJm6U8yC077BA==
 
+commander@^8.0.0:
+  version "8.2.0"
+  resolved "https://registry.yarnpkg.com/commander/-/commander-8.2.0.tgz#37fe2bde301d87d47a53adeff8b5915db1381ca8"
+  integrity sha512-LLKxDvHeL91/8MIyTAD5BFMNtoIwztGPMiM/7Bl8rIPmHCZXRxmSWr91h57dpOpnQ6jIUqEWdXE/uBYMfiVZDA==
+
 commander@~2.13.0:
   version "2.13.0"
   resolved "https://registry.yarnpkg.com/commander/-/commander-2.13.0.tgz#6964bca67685df7c1f1430c584f07d7597885b9c"
@@ -7934,6 +7946,13 @@ debug@^4.3.1:
   version "4.3.1"
   resolved "https://registry.yarnpkg.com/debug/-/debug-4.3.1.tgz#f0d229c505e0c6d8c49ac553d1b13dc183f6b2ee"
   integrity sha512-doEwdvm4PCeK4K3RQN2ZC2BYUBaxwLARCqZmMjtF8a51J2Rb0xpVloFRnCODwqjpwnAoao4pelN8l3RJdv3gRQ==
+  dependencies:
+    ms "2.1.2"
+
+debug@^4.3.2:
+  version "4.3.2"
+  resolved "https://registry.yarnpkg.com/debug/-/debug-4.3.2.tgz#f0a49c18ac8779e31d4a0c6029dfb76873c7428b"
+  integrity sha512-mOp8wKcvj7XxC78zLgw/ZA+6TSgkoE2C/ienthhRD298T7UNwAg9diBpLRxC0mOezLl4B0xV7M0cCO6P/O0Xhw==
   dependencies:
     ms "2.1.2"
 
@@ -9926,6 +9945,14 @@ ethereumjs-wallet@^1.0.1:
     scrypt-js "^3.0.1"
     utf8 "^3.0.0"
     uuid "^3.3.2"
+
+ethers-cfx-patch@^0.1.1-beta:
+  version "0.1.1-beta"
+  resolved "https://registry.yarnpkg.com/ethers-cfx-patch/-/ethers-cfx-patch-0.1.1-beta.tgz#f2f7e578e8ea3101cca27f12697dd6893c272b02"
+  integrity sha512-y/x7iqF/nb5gUYMLo2Xw4zC1TC1UA9GVdg8mMfAXCL1JDjkJ2MD8InRPizovM1+uydjt28+Oky5Ypf1nM+ksqQ==
+  dependencies:
+    debug "^4.3.2"
+    js-conflux-sdk "^1.7.0"
 
 ethers@4.0.0-beta.3:
   version "4.0.0-beta.3"
@@ -14048,6 +14075,21 @@ js-conflux-sdk@^1.5.11:
     superagent "^5.1.0"
     websocket "^1.0.31"
 
+js-conflux-sdk@^1.7.0:
+  version "1.7.0"
+  resolved "https://registry.yarnpkg.com/js-conflux-sdk/-/js-conflux-sdk-1.7.0.tgz#7b57a076a5f15281cac408433999115f251c3ce1"
+  integrity sha512-XqfZQz3ozB9g9+RaL7aI1mHrzUVJSgF72bYutkaTDeQPnOVKcOUwKs7mSdYIp51Ers/jJgm+vqhCgzecRD9lwQ==
+  dependencies:
+    "@conflux-dev/conflux-address-js" "^1.1.7"
+    big.js "^5.2.2"
+    commander "^8.0.0"
+    keccak "^2.0.0"
+    lodash "^4.17.19"
+    scrypt-js "^3.0.1"
+    secp256k1 "^3.7.1"
+    superagent "^6.1.0"
+    websocket "^1.0.31"
+
 js-interpreter@2.2.0:
   version "2.2.0"
   resolved "https://registry.yarnpkg.com/js-interpreter/-/js-interpreter-2.2.0.tgz#a4f8699f833898f43e5deadffef52310e4649432"
@@ -14114,6 +14156,11 @@ jsan@^3.1.13:
   version "3.1.13"
   resolved "https://registry.yarnpkg.com/jsan/-/jsan-3.1.13.tgz#4de8c7bf8d1cfcd020c313d438f930cec4b91d86"
   integrity sha512-9kGpCsGHifmw6oJet+y8HaCl14y7qgAsxVdV3pCHDySNR3BfDC30zgkssd7x5LRVAT22dnpbe9JdzzmXZnq9/g==
+
+jsbi@^3.1.4:
+  version "3.2.5"
+  resolved "https://registry.yarnpkg.com/jsbi/-/jsbi-3.2.5.tgz#b37bb90e0e5c2814c1c2a1bcd8c729888a2e37d6"
+  integrity sha512-aBE4n43IPvjaddScbvWRA2YlTzKEynHzu7MqOyTipdHucf/VxS63ViCjxYRg86M8Rxwbt/GfzHl1kKERkt45fQ==
 
 jsbn@~0.1.0:
   version "0.1.1"
@@ -21335,6 +21382,23 @@ superagent@^5.1.0:
   version "5.3.1"
   resolved "https://registry.yarnpkg.com/superagent/-/superagent-5.3.1.tgz#d62f3234d76b8138c1320e90fa83dc1850ccabf1"
   integrity sha512-wjJ/MoTid2/RuGCOFtlacyGNxN9QLMgcpYLDQlWFIhhdJ93kNscFonGvrpAHSCVjRVj++DGCglocF7Aej1KHvQ==
+  dependencies:
+    component-emitter "^1.3.0"
+    cookiejar "^2.1.2"
+    debug "^4.1.1"
+    fast-safe-stringify "^2.0.7"
+    form-data "^3.0.0"
+    formidable "^1.2.2"
+    methods "^1.1.2"
+    mime "^2.4.6"
+    qs "^6.9.4"
+    readable-stream "^3.6.0"
+    semver "^7.3.2"
+
+superagent@^6.1.0:
+  version "6.1.0"
+  resolved "https://registry.yarnpkg.com/superagent/-/superagent-6.1.0.tgz#09f08807bc41108ef164cfb4be293cebd480f4a6"
+  integrity sha512-OUDHEssirmplo3F+1HWKUrUjvnQuA+nZI6i/JJBdXb5eq9IyEQwPyPpqND+SSsxf6TygpBEkUjISVRN4/VOpeg==
   dependencies:
     component-emitter "^1.3.0"
     cookiejar "^2.1.2"
