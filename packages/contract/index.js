@@ -1,3 +1,4 @@
+require("ethers-cfx-patch");
 require("source-map-support/register");
 const Schema = require("@truffle/contract-schema");
 const Contract = require("./lib/contract");

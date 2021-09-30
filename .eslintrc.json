@@ -7,7 +7,9 @@
     "plugin:react-hooks/recommended"
   ],
   "parser": "@typescript-eslint/parser",
-  "plugins": ["@typescript-eslint"],
+  "plugins": [
+    "@typescript-eslint"
+  ],
   "parserOptions": {
     "ecmaVersion": 9,
     "sourceType": "module"
@@ -15,12 +17,23 @@
   "rules": {
     "@typescript-eslint/no-unused-vars": [
       "error",
-      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^debug$|^_" }
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^debug$|^_"
+      }
     ],
-    "quote-props": [ "error", "consistent" ],
-    "@typescript-eslint/semi": [ "error", "always" ],
+    "quote-props": [
+      "error",
+      "consistent"
+    ],
+    "@typescript-eslint/semi": [
+      "error",
+      "always"
+    ],
     "no-mixed-operators": "warn",
     "no-tabs": "warn",
-    "no-useless-escape": "warn"
+    "no-useless-escape": 1,
+    "no-undef":1
+    // "@typescript-eslint/no-use-before-define": ["error"]
   }
 }
